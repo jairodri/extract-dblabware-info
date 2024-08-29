@@ -42,23 +42,70 @@ def get_dbinfo_metadata(host, port, service_name, username, password):
     catalog_info = {}
 
     catalog_tables = {
-        "tables": "ALL_TABLES",
-        "views": "ALL_VIEWS",
-        "indexes": "ALL_INDEXES",
-        "constraints": "ALL_CONSTRAINTS",
-        "procedures": "ALL_PROCEDURES",
-        "synonyms": "ALL_SYNONYMS"
+        "tables": {
+            "name": "ALL_TABLES",
+            "order": "TABLE_NAME",
+            "field_owner": "OWNER",
+            "index": "TABLE_NAME",
+            "fields": {}
+        },
+        "views": {
+            "name": "ALL_VIEWS",
+            "order": "VIEW_NAME",
+            "field_owner": "OWNER",
+            "index": "VIEW_NAME",
+            "fields": {}
+        },
+        "indexes": {
+            "name": "ALL_INDEXES",
+            "order": "TABLE_NAME",
+            "field_owner": "OWNER",
+            "index": "INDEX_NAME",
+            "fields": {}
+        },
+        "constraints": {
+            "name": "ALL_CONSTRAINTS",
+            "order": "TABLE_NAME",
+            "field_owner": "OWNER",
+            "index": "TABLE_NAME",
+            "fields": {}
+        },
+        "procedures": {
+            "name": "ALL_PROCEDURES",
+            "order": "OBJECT_NAME",
+            "field_owner": "OWNER",
+            "index": "OBJECT_NAME",
+            "fields": {}
+        },
+        "synonyms": {
+            "name": "ALL_SYNONYMS",
+            "order": "TABLE_NAME",
+            "field_owner": "TABLE_OWNER",
+            "index": "SYNONYM_NAME",
+            "fields": {}
+        }
     }
 
     with engine.connect() as connection:
         for object_type, table in catalog_tables.items():
-            query = f"select COLUMN_NAME, DATA_TYPE, DATA_LENGTH from SYS.ALL_TAB_COLS where TABLE_NAME = '{table}' order by COLUMN_ID"
+            table_name = table['name']
+            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' order by COLUMN_ID"
             try:
                 df = pd.read_sql(query, connection)
+                fields_dict = {}
+                for _, row in df.iterrows():
+                    # print(row)
+                    column_name = row['column_name']
+                    fields_dict[column_name] = {
+                        "data_type": row['data_type'],
+                        "data_length": row['data_length']
+                    }
+                catalog_tables[object_type]["fields"] = fields_dict
                 catalog_info[object_type] = df
             except SQLAlchemyError as e:
                 print(f"Error retrieving {object_type}: {e}")
                 catalog_info[object_type] = pd.DataFrame()  # Return an empty DataFrame in case of error
 
+        # print(catalog_tables)
     return catalog_info
 
