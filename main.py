@@ -24,5 +24,5 @@ output_dir_metadata = os.getenv('OUTPUT_DIR_METADATA')
 output_dir_data = os.getenv('OUTPUT_DIR_DATA')
 
 if __name__ == '__main__':
-    db_info = get_dbinfo_metadata(host, port, service_name, username, password, owner)
-    dump_dbinfo_to_csv(service_name, db_info, output_dir_metadata, sep='|')
+    db_info_catalog = get_dbinfo_metadata(host, port, service_name, username, password, owner)
+    dump_dbinfo_to_csv(service_name, db_info_catalog, output_dir_metadata, sep='|')

@@ -39,8 +39,11 @@ def dump_dbinfo_to_csv(service_name:str, table_dataframes: dict, output_dir: str
     os.makedirs(output_dir, exist_ok=True)
 
     # Iterate over each table name and its corresponding DataFrame in the dictionary
-    for table_name, dataframe in table_dataframes.items():
+    # for table_name, dataframe in table_dataframes.items():
+    for item, item_data in table_dataframes.items():
         # Replace newline characters with spaces in all text columns
+        table_name = item_data['name']
+        dataframe = item_data['data']
         dataframe = dataframe.applymap(lambda x: x.replace('\n', ' ') if isinstance(x, str) else x)
 
         # Create the CSV file path using the table name

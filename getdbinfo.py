@@ -32,13 +32,73 @@ def connect_to_oracle(host:str, port:int, service_name:str, username:str, passwo
 
 
 def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, password:str, owner:str):
+    """
+    Retrieves metadata information from the Oracle database's catalog tables for the specified owner and 
+    returns it as a structured dictionary.
 
+    This function connects to an Oracle database using the provided credentials and retrieves metadata 
+    information for various types of database objects (tables, views, indexes, constraints, procedures, 
+    and synonyms) owned by the specified user. The metadata includes details about columns (name, data type, 
+    and length) and the actual data for each catalog object type.
+
+    Parameters:
+    -----------
+    host : str
+        The hostname or IP address of the Oracle database server.
+    port : int
+        The port number on which the Oracle database server is listening.
+    service_name : str
+        The service name of the Oracle database.
+    username : str
+        The username used to connect to the Oracle database.
+    password : str
+        The password associated with the username for Oracle database connection.
+    owner : str
+        The owner of the database objects for which metadata is being retrieved.
+
+    Returns:
+    --------
+    dict
+        A dictionary containing metadata and data for various Oracle catalog tables. The dictionary 
+        is structured as follows:
+
+        {
+            "tables": {
+                "name": "ALL_TABLES",
+                "order": "TABLE_NAME",
+                "field_owner": "OWNER",
+                "index": "TABLE_NAME",
+                "fields": { ... },  # Dictionary containing column metadata
+                "data": pd.DataFrame()  # DataFrame containing data from the table
+            },
+            "views": { ... },  # Similar structure for views
+            "indexes": { ... },  # Similar structure for indexes
+            "constraints": { ... },  # Similar structure for constraints
+            "procedures": { ... },  # Similar structure for procedures
+            "synonyms": { ... }  # Similar structure for synonyms
+        }
+
+        Each "fields" dictionary contains entries of the form:
+        {
+            "column_name": {
+                "data_type": <DATA_TYPE>,
+                "data_length": <DATA_LENGTH>
+            },
+            ...
+        }
+
+    Notes:
+    ------
+    - The function assumes that the Oracle database connection is stable and that the user has sufficient 
+      privileges to query the system catalog views.
+    - In case of any SQLAlchemyError during data retrieval, the function catches the exception, prints an 
+      error message, and stores an empty DataFrame or dictionary in the result.
+    - The function uses SQLAlchemy to handle database connections and execute SQL queries.
+    """
     engine = connect_to_oracle(host, port, service_name, username, password)
 
     if engine is None:
         return None
-
-    catalog_info = {}
 
     catalog_tables = {
         "tables": {
@@ -46,48 +106,54 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
             "order": "TABLE_NAME",
             "field_owner": "OWNER",
             "index": "TABLE_NAME",
-            "fields": {}
+            "fields": {},
+            "data": pd.DataFrame()
         },
         "views": {
             "name": "ALL_VIEWS",
             "order": "VIEW_NAME",
             "field_owner": "OWNER",
             "index": "VIEW_NAME",
-            "fields": {}
+            "fields": {},
+            "data": pd.DataFrame()
         },
         "indexes": {
             "name": "ALL_INDEXES",
             "order": "TABLE_NAME",
             "field_owner": "OWNER",
             "index": "INDEX_NAME",
-            "fields": {}
+            "fields": {},
+            "data": pd.DataFrame()
         },
         "constraints": {
             "name": "ALL_CONSTRAINTS",
             "order": "TABLE_NAME",
             "field_owner": "OWNER",
             "index": "TABLE_NAME",
-            "fields": {}
+            "fields": {},
+            "data": pd.DataFrame()
         },
         "procedures": {
             "name": "ALL_PROCEDURES",
             "order": "OBJECT_NAME",
             "field_owner": "OWNER",
             "index": "OBJECT_NAME",
-            "fields": {}
+            "fields": {},
+            "data": pd.DataFrame()
         },
         "synonyms": {
             "name": "ALL_SYNONYMS",
             "order": "TABLE_NAME",
             "field_owner": "TABLE_OWNER",
             "index": "SYNONYM_NAME",
-            "fields": {}
+            "fields": {},
+            "data": pd.DataFrame()
         }
     }
 
     with engine.connect() as connection:
-        for object_type, table in catalog_tables.items():
-            table_name = table['name']
+        for catalog_table, table_info in catalog_tables.items():
+            table_name = table_info['name']
             query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' order by COLUMN_ID"
             try:
                 df = pd.read_sql(query, connection)
@@ -98,25 +164,24 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
                         "data_type": row['data_type'],
                         "data_length": row['data_length']
                     }
-                catalog_tables[object_type]["fields"] = fields_dict
+                catalog_tables[catalog_table]["fields"] = fields_dict
             except SQLAlchemyError as e:
-                print(f"Error retrieving {object_type}: {e}")
-                catalog_tables[object_type]["fields"] = {}
+                print(f"Error retrieving {catalog_table}: {e}")
+                catalog_tables[catalog_table]["fields"] = {}
 
     with engine.connect() as connection:
-        for object_type, table in catalog_tables.items():
-            table_name = table['name']
-            order = table['order']
-            field_owner = table['field_owner']
-            fields = table['fields']
-            fields = ', '.join(f"{fld}" for fld in list(table['fields'].keys()))
+        for catalog_table, table_info in catalog_tables.items():
+            table_name = table_info['name']
+            order = table_info['order']
+            field_owner = table_info['field_owner']
+            fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
             query = f"select {fields} from sys.{table_name} where {field_owner} = '{owner}' order by {order}"
             try:
                 df = pd.read_sql(query, connection)
-                catalog_info[table_name] = df
+                catalog_tables[catalog_table]["data"] = df 
             except SQLAlchemyError as e:
-                print(f"Error retrieving {object_type}: {e}")
-                catalog_info[table_name] = pd.DataFrame()  # Return an empty DataFrame in case of error
+                print(f"Error retrieving {catalog_table}: {e}")
+                catalog_tables[catalog_table]["data"] = pd.DataFrame()
 
-    return catalog_info
+    return catalog_tables
 
