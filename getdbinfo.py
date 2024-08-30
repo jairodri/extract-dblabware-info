@@ -151,6 +151,9 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
         }
     }
 
+    # First, we retrieve the fields of the column name, its type and length for the main catalog tables.
+    # These values will be stored in the “fields” key of the dictionary with the catalog data.
+    # We will need this information later to determine if a field is CLOB.
     with engine.connect() as connection:
         for catalog_table, table_info in catalog_tables.items():
             table_name = table_info['name']
@@ -169,6 +172,9 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
                 print(f"Error retrieving {catalog_table}: {e}")
                 catalog_tables[catalog_table]["fields"] = {}
 
+    # Now we use the information in the list of fields to retrieve all the information contained in the main tables of the catalog.
+    # We also use the predefined information about the owner of the tables and the order of retrieval of the query.
+    # The retrieved information will be stored in the “data” key of the dictionary with the catalog tables.
     with engine.connect() as connection:
         for catalog_table, table_info in catalog_tables.items():
             table_name = table_info['name']
@@ -182,6 +188,30 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
             except SQLAlchemyError as e:
                 print(f"Error retrieving {catalog_table}: {e}")
                 catalog_tables[catalog_table]["data"] = pd.DataFrame()
+
+    with engine.connect() as connection:
+        all_tables_df = catalog_tables["tables"]["data"] 
+        for _, row in all_tables_df.iterrows():
+            table_name = row['table_name']
+            query = f"""
+                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, COLUMN_ID
+                FROM SYS.ALL_TAB_COLS 
+                WHERE TABLE_NAME = '{table_name}' 
+                ORDER BY COLUMN_NAME
+            """
+            try:
+                df = pd.read_sql(query, connection)
+                catalog_tables[table_name] = {
+                    "name": table_name,
+                    "order": "",
+                    "field_owner": "",
+                    "index": "",
+                    "fields": {},  
+                    "data": df
+                }
+            except SQLAlchemyError as e:
+                print(f"Error retrieving column information for table {table_name}: {e}")
+
 
     return catalog_tables
 
