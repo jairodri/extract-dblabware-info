@@ -189,6 +189,16 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
                 print(f"Error retrieving {catalog_table}: {e}")
                 catalog_tables[catalog_table]["data"] = pd.DataFrame()
 
+    generic_fields = {
+        'COLUMN_NAME': {'data_type': 'VARCHAR2', 'data_length': 128},
+        'DATA_TYPE': {'data_type': 'VARCHAR2', 'data_length': 128},
+        'DATA_LENGTH': {'data_type': 'NUMBER', 'data_length': 22},
+        'DATA_PRECISION': {'data_type': 'NUMBER', 'data_length': 22},
+        'DATA_SCALE': {'data_type': 'NUMBER', 'data_length': 22},
+        'NULLABLE': {'data_type': 'VARCHAR2', 'data_length': 1},
+        'COLUMN_ID': {'data_type': 'NUMBER', 'data_length': 22}
+    }
+    # Finally, we retrieve the catalog information of all tables defined in ALL_TABLES and create an entry for each table in the catalog information dictionary.
     with engine.connect() as connection:
         all_tables_df = catalog_tables["tables"]["data"] 
         for _, row in all_tables_df.iterrows():
@@ -206,7 +216,7 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
                     "order": "",
                     "field_owner": "",
                     "index": "",
-                    "fields": {},  
+                    "fields": generic_fields,  
                     "data": df
                 }
             except SQLAlchemyError as e:

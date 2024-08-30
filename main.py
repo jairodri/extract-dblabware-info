@@ -25,5 +25,5 @@ output_dir_data = os.getenv('OUTPUT_DIR_DATA')
 
 if __name__ == '__main__':
     db_info_catalog = get_dbinfo_metadata(host, port, service_name, username, password, owner)
-    dump_dbinfo_to_csv(service_name, db_info_catalog, output_dir_metadata, sep='|')
+    # dump_dbinfo_to_csv(service_name, db_info_catalog, output_dir_metadata, sep='|')
     dump_dbinfo_to_excel(service_name, db_info_catalog, output_dir_metadata)

@@ -246,6 +246,8 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
     for item, item_data in table_dataframes.items():
         table_name = item_data['name']
         dataframe = item_data['data']
+        fields = item_data['fields']
+        data_types = [value['data_type'] for value in fields.values()]
         # Limit the number of records to max_records_per_table
         limited_dataframe = dataframe.head(max_records_per_table)
 
@@ -258,18 +260,24 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
         # Add the DataFrame to the sheet
         for r_idx, row in enumerate(dataframe_to_rows(limited_dataframe, index=False, header=True), 1):
             for c_idx, value in enumerate(row, 1):
-                # Convert datetime64 and date values to Excel date format
-                if isinstance(value, pd.Timestamp):
-                    cell_value = value.to_pydatetime()
-                elif isinstance(value, date):
-                    cell_value = value.date()  
-                else:
-                    # Ensure the value is converted to a string if it's not a basic data type
-                    cell_value = str(value) if not isinstance(value, (int, float, type(None))) else value
-                cell = sheet.cell(row=r_idx, column=c_idx, value=cell_value)
                 # Apply formatting to header row
                 if r_idx == 1:  
+                    cell = sheet.cell(row=r_idx, column=c_idx, value=value)
                     format_header_cell(cell, font_size=standard_font_size)
+                else:
+                    if data_types[c_idx-1] == 'LONG' or data_types[c_idx-1] == 'CLOB':
+                        #TO DO: implementar funcionalidad para CLOB
+                        cell_value = 'CLOB'
+                    # Convert datetime64 and date values to Excel date format
+                    elif isinstance(value, pd.Timestamp):
+                        cell_value = value.to_pydatetime()
+                    elif isinstance(value, date):
+                        cell_value = value.date()  
+                    else:
+                        # Ensure the value is converted to a string if it's not a basic data type
+                        cell_value = str(value) if not isinstance(value, (int, float, type(None))) else value
+                    cell = sheet.cell(row=r_idx, column=c_idx, value=cell_value)
+
         
         # Auto-size columns 
         adjust_column_widths(sheet)
