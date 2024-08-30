@@ -19,5 +19,5 @@ password = os.getenv('PASSWORD')
 owner = os.getenv('OWNER')
 
 if __name__ == '__main__':
-    db_info = get_dbinfo_metadata(host, port, service_name, username, password)
+    db_info = get_dbinfo_metadata(host, port, service_name, username, password, owner)
     print(db_info)

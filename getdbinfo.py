@@ -3,7 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 import pandas as pd
 
 
-def connect_to_oracle(host, port, service_name, username, password):
+def connect_to_oracle(host:str, port:int, service_name:str, username:str, password:str):
     """
     Function to connect to an Oracle database using SQLAlchemy and cx_Oracle.
     From version 8 onwards, cx_Oracle has been renamed to oracledb, though cx_Oracle is still functional in earlier versions.
@@ -23,7 +23,6 @@ def connect_to_oracle(host, port, service_name, username, password):
     connection_string = f'oracle+cx_oracle://{username}:{password}@{host}:{port}/?service_name={service_name}'
     
     try:
-        # Create the SQLAlchemy engine
         engine = create_engine(connection_string)
         return engine
     except SQLAlchemyError as e:
@@ -32,7 +31,7 @@ def connect_to_oracle(host, port, service_name, username, password):
 
 
 
-def get_dbinfo_metadata(host, port, service_name, username, password):
+def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, password:str, owner:str):
 
     engine = connect_to_oracle(host, port, service_name, username, password)
 
@@ -94,18 +93,30 @@ def get_dbinfo_metadata(host, port, service_name, username, password):
                 df = pd.read_sql(query, connection)
                 fields_dict = {}
                 for _, row in df.iterrows():
-                    # print(row)
                     column_name = row['column_name']
                     fields_dict[column_name] = {
                         "data_type": row['data_type'],
                         "data_length": row['data_length']
                     }
                 catalog_tables[object_type]["fields"] = fields_dict
+            except SQLAlchemyError as e:
+                print(f"Error retrieving {object_type}: {e}")
+                catalog_tables[object_type]["fields"] = {}
+
+    with engine.connect() as connection:
+        for object_type, table in catalog_tables.items():
+            table_name = table['name']
+            order = table['order']
+            field_owner = table['field_owner']
+            fields = table['fields']
+            fields = ', '.join(f"{fld}" for fld in list(table['fields'].keys()))
+            query = f"select {fields} from sys.{table_name} where {field_owner} = '{owner}' order by {order}"
+            try:
+                df = pd.read_sql(query, connection)
                 catalog_info[object_type] = df
             except SQLAlchemyError as e:
                 print(f"Error retrieving {object_type}: {e}")
                 catalog_info[object_type] = pd.DataFrame()  # Return an empty DataFrame in case of error
 
-        # print(catalog_tables)
     return catalog_info
 
