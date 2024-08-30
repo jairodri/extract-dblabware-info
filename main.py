@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from getdbinfo import get_dbinfo_metadata
-from dumpdbinfo import dump_dbinfo_to_csv
+from dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 
 
@@ -26,3 +26,4 @@ output_dir_data = os.getenv('OUTPUT_DIR_DATA')
 if __name__ == '__main__':
     db_info_catalog = get_dbinfo_metadata(host, port, service_name, username, password, owner)
     dump_dbinfo_to_csv(service_name, db_info_catalog, output_dir_metadata, sep='|')
+    dump_dbinfo_to_excel(service_name, db_info_catalog, output_dir_metadata)
