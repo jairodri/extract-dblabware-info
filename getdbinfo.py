@@ -113,10 +113,10 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
             query = f"select {fields} from sys.{table_name} where {field_owner} = '{owner}' order by {order}"
             try:
                 df = pd.read_sql(query, connection)
-                catalog_info[object_type] = df
+                catalog_info[table_name] = df
             except SQLAlchemyError as e:
                 print(f"Error retrieving {object_type}: {e}")
-                catalog_info[object_type] = pd.DataFrame()  # Return an empty DataFrame in case of error
+                catalog_info[table_name] = pd.DataFrame()  # Return an empty DataFrame in case of error
 
     return catalog_info
 

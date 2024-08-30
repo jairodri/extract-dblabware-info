@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from getdbinfo import get_dbinfo_metadata
+from dumpdbinfo import dump_dbinfo_to_csv
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 
 
@@ -18,6 +19,10 @@ username = os.getenv('USER')
 password = os.getenv('PASSWORD')
 owner = os.getenv('OWNER')
 
+# Get the directory where the output files will be saved
+output_dir_metadata = os.getenv('OUTPUT_DIR_METADATA')
+output_dir_data = os.getenv('OUTPUT_DIR_DATA')
+
 if __name__ == '__main__':
     db_info = get_dbinfo_metadata(host, port, service_name, username, password, owner)
-    print(db_info)
+    dump_dbinfo_to_csv(service_name, db_info, output_dir_metadata, sep='|')
