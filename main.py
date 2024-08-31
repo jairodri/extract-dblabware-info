@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from getdbinfo import get_dbinfo_metadata
+from getdbinfo import get_dbinfo_metadata, get_dbinfo_table
 from dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 
@@ -23,7 +23,12 @@ owner = os.getenv('OWNER')
 output_dir_metadata = os.getenv('OUTPUT_DIR_METADATA')
 output_dir_data = os.getenv('OUTPUT_DIR_DATA')
 
+table_name = os.getenv('TABLE_NAME')
+
 if __name__ == '__main__':
-    db_info_catalog = get_dbinfo_metadata(host, port, service_name, username, password, owner)
+    # db_info_catalog = get_dbinfo_metadata(host, port, service_name, username, password, owner)
     # dump_dbinfo_to_csv(service_name, db_info_catalog, output_dir_metadata, sep='|')
-    dump_dbinfo_to_excel(service_name, db_info_catalog, output_dir_metadata)
+    # dump_dbinfo_to_excel(service_name, db_info_catalog, output_dir_metadata)
+    db_info_table = get_dbinfo_table(host, port, service_name, username, password, owner, table_name)
+    dump_dbinfo_to_csv(service_name, db_info_table, output_dir_data, sep='|')
+    dump_dbinfo_to_excel(service_name, db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000)

@@ -225,3 +225,49 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
 
     return catalog_tables
 
+
+def get_dbinfo_table(host:str, port:int, service_name:str, username:str, password:str, owner:str, table_name: str):
+
+    engine = connect_to_oracle(host, port, service_name, username, password)
+
+    if engine is None:
+        return None
+
+    table_dict = {}
+
+    # First, we retrieve the fields of the column name, its type and length for table.
+    # These values will be stored in the “fields” key of the dictionary with the catalog data.
+    # We will need this information later to determine if a field is CLOB.
+    with engine.connect() as connection:
+        query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' order by COLUMN_ID"
+        fields_dict = {}
+        try:
+            df = pd.read_sql(query, connection)
+            for _, row in df.iterrows():
+                column_name = row['column_name']
+                fields_dict[column_name] = {
+                    "data_type": row['data_type'],
+                    "data_length": row['data_length']
+                }
+            table_dict[table_name] = {
+                "name": table_name,
+                "order": "",
+                "field_owner": "",
+                "index": "",
+                "fields": fields_dict,  
+                "data": pd.DataFrame()
+            }
+        except SQLAlchemyError as e:
+            print(f"Error retrieving {table_name}: {e}")
+            table_dict[table_name]["fields"] = {}
+
+        fields = ', '.join(f"{fld}" for fld in list(fields_dict.keys()))
+        query = f'select {fields} from {owner}.{table_name}'
+        try:
+            df = pd.read_sql(query, connection)
+            table_dict[table_name]["data"] = df
+        except SQLAlchemyError as e:
+            print(f"Error retrieving {table_name}: {e}")
+            table_dict[table_name]["data"] = pd.DataFrame()
+
+    return table_dict
