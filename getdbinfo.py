@@ -271,3 +271,49 @@ def get_dbinfo_table(host:str, port:int, service_name:str, username:str, passwor
             table_dict[table_name]["data"] = pd.DataFrame()
 
     return table_dict
+
+
+def get_dbinfo_all_tables(host:str, port:int, service_name:str, username:str, password:str, owner:str):
+
+    engine = connect_to_oracle(host, port, service_name, username, password)
+
+    if engine is None:
+        return None
+
+    all_tables = {}
+
+    with engine.connect() as connection:
+        query = f"select TABLE_NAME from SYS.ALL_TABLES where OWNER = '{owner}' order by TABLE_NAME"
+        try:
+            df = pd.read_sql(query, connection)
+            for _, row in df.iterrows():
+                table_name = row['table_name']
+                all_tables[table_name] = {
+                    "name": table_name,
+                    "order": "",
+                    "field_owner": "",
+                    "index": "",
+                    "fields": {},  
+                    "data": pd.DataFrame()
+                }
+        except SQLAlchemyError as e:
+            print(f"Error retrieving tables: {e}")
+
+        for object_table, table_info in all_tables.items():
+            table_name = table_info['name']
+            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' order by COLUMN_ID"
+            try:
+                df = pd.read_sql(query, connection)
+                fields_dict = {}
+                for _, row in df.iterrows():
+                    column_name = row['column_name']
+                    fields_dict[column_name] = {
+                        "data_type": row['data_type'],
+                        "data_length": row['data_length']
+                    }
+                all_tables[object_table]["fields"] = fields_dict
+            except SQLAlchemyError as e:
+                print(f"Error retrieving {object_table}: {e}")
+                all_tables[object_table]["fields"] = {}
+
+    return all_tables
