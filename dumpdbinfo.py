@@ -8,7 +8,7 @@ from openpyxl.worksheet.hyperlink import Hyperlink
 from datetime import datetime, date
 
 
-def dump_dbinfo_to_csv(service_name:str, table_dataframes: dict, output_dir: str, sep: str=','):
+def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str, sep: str=','):
     """
     Saves each DataFrame in the provided dictionary to a CSV file, organizing the files within a directory 
     named after the service.
@@ -19,8 +19,8 @@ def dump_dbinfo_to_csv(service_name:str, table_dataframes: dict, output_dir: str
 
     Parameters:
     -----------
-    service_name : str
-        The name of the service (typically the database service) used to name the output subdirectory.
+    folder_name : str
+        The name of the output subdirectory.
     
     table_dataframes : dict
         A dictionary where each key is a table name and each value is a DataFrame containing the table's data.
@@ -38,8 +38,8 @@ def dump_dbinfo_to_csv(service_name:str, table_dataframes: dict, output_dir: str
     """
 
     # Ensure the output directory includes a subdirectory named after the service
-    if not output_dir.endswith(service_name):
-        output_dir = os.path.join(output_dir, service_name)
+    if not output_dir.endswith(folder_name):
+        output_dir = os.path.join(output_dir, folder_name)
 
     # Create the output directory if it does not exist
     os.makedirs(output_dir, exist_ok=True)
@@ -48,8 +48,13 @@ def dump_dbinfo_to_csv(service_name:str, table_dataframes: dict, output_dir: str
     for item, item_data in table_dataframes.items():
         table_name = item_data['name']
         dataframe = item_data['data']
+        fields = item_data['fields']
+
         # Replace newline characters with spaces in all text columns
-        dataframe = dataframe.applymap(lambda x: x.replace('\n', ' ') if isinstance(x, str) else x)
+        # column names in dataframe are in lower case meanwhile in fields dictionary are in upper case
+        for column_name, column_info in fields.items():
+            if column_info['data_type'] in ['CLOB', 'LONG', 'VARCHAR', 'VARCHAR2']:
+                dataframe[column_name.lower()] = dataframe[column_name.lower()].str.replace(r'\r?\n', ' ', regex=True)
 
         # Create the CSV file path using the table name
         file_path = os.path.join(output_dir, f"{table_name}.csv")
@@ -160,7 +165,7 @@ def format_header_cell(cell, font_size=11):
     cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
 
 
-def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: str, include_record_count: bool = False, max_records_per_table: int = 50000):
+def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: str, include_record_count: bool = False, max_records_per_table: int = 50000, file_name: str = None):
     """
     Exports data from the provided dictionary to an Excel workbook, with each table's data in a separate sheet.
 
@@ -175,8 +180,8 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
 
     Parameters:
     -----------
-    service_name : str
-        The name of the database service, used to name the output Excel file and the directory where it will be saved.
+    folder_name : str
+        Used to name the output Excel file and the directory where it will be saved.
 
     table_dataframes : dict
         A dictionary where each key is a table identifier, and each value is a dictionary containing:
@@ -211,8 +216,8 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
     """
 
     # Ensure the output directory includes the database name
-    if not output_dir.endswith(service_name):
-        output_dir = os.path.join(output_dir, service_name)
+    if not output_dir.endswith(folder_name):
+        output_dir = os.path.join(output_dir, folder_name)
     # Ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
 
@@ -327,6 +332,9 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
     for i in range(2, index_sheet.max_row + 1):
         create_hyperlink(index_sheet, 'A' + str(i), index_sheet['A' + str(i)].value, cell_ref='A1')
 
-    # Save the workbook to the output directory with the name of the database
-    excel_file_path = os.path.join(output_dir, f"{service_name}.xlsx")
+    # Save the workbook to the output directory 
+    if file_name is None:
+        excel_file_path = os.path.join(output_dir, f"{folder_name}.xlsx")
+    else:
+        excel_file_path = os.path.join(output_dir, f"{file_name}.xlsx")
     workbook.save(excel_file_path)

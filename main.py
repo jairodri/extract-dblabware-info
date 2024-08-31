@@ -31,4 +31,4 @@ if __name__ == '__main__':
     # dump_dbinfo_to_excel(service_name, db_info_catalog, output_dir_metadata)
     db_info_table = get_dbinfo_table(host, port, service_name, username, password, owner, table_name)
     dump_dbinfo_to_csv(service_name, db_info_table, output_dir_data, sep='|')
-    dump_dbinfo_to_excel(service_name, db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000)
+    dump_dbinfo_to_excel(service_name, db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000, file_name=table_name)
