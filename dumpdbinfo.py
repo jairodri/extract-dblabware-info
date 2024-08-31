@@ -169,7 +169,9 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
 
     Optionally, a column can be added to the index sheet that shows the number of records in each table.
 
-    Each table's sheet will include a hyperlink in the header row to return to the index sheet.
+    Each table's sheet will include a hyperlink in the header row to return to the index sheet. Columns of type CLOB are
+    handled specially by saving their content to individual text files in a subdirectory and creating a hyperlink in the
+    corresponding cell to access the text file directly.
 
     Parameters:
     -----------
@@ -180,6 +182,7 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
         A dictionary where each key is a table identifier, and each value is a dictionary containing:
             - 'name': The name of the table.
             - 'data': A pandas DataFrame containing the table's data.
+            - 'fields': A dictionary describing each column's metadata including data type.
 
     output_dir : str
         The directory where the Excel file will be saved. The function ensures the directory structure includes a 
@@ -203,14 +206,20 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
       includes a hyperlink to return to the index sheet.
     - The number of records per table in the Excel file is limited by `max_records_per_table` to prevent excessive file size.
     - If `include_record_count` is set to True, the index sheet will include an additional column showing the number of records in each table.
+    - For columns with data types 'CLOB' or 'LONG', the content is saved in separate text files in a 'CLOB' subdirectory, 
+      and the cell in Excel contains a hyperlink to these files, allowing easy access to large text data.
     """
 
     # Ensure the output directory includes the database name
     if not output_dir.endswith(service_name):
         output_dir = os.path.join(output_dir, service_name)
-
     # Ensure the output directory exists
     os.makedirs(output_dir, exist_ok=True)
+
+    # Define the path for the CLOB subdirectory
+    clob_subdir = os.path.join(output_dir, 'CLOB')
+    # Ensure the CLOB subdirectory exists
+    os.makedirs(clob_subdir, exist_ok=True)
 
     # Create the Excel workbook
     workbook = Workbook()
@@ -247,6 +256,7 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
         table_name = item_data['name']
         dataframe = item_data['data']
         fields = item_data['fields']
+        column_names = list(fields.keys())
         data_types = [value['data_type'] for value in fields.values()]
         # Limit the number of records to max_records_per_table
         limited_dataframe = dataframe.head(max_records_per_table)
@@ -266,8 +276,27 @@ def dump_dbinfo_to_excel(service_name:str, table_dataframes: dict, output_dir: s
                     format_header_cell(cell, font_size=standard_font_size)
                 else:
                     if data_types[c_idx-1] == 'LONG' or data_types[c_idx-1] == 'CLOB':
-                        #TO DO: implementar funcionalidad para CLOB
-                        cell_value = 'CLOB'
+                        # Handle CLOB data by writing it to a text file
+                        if pd.notna(value):
+                            # Define the filename for the CLOB content
+                            clob_filename = f"{table_name}_{column_names[c_idx-1]}_{r_idx:06}.txt"
+                            clob_filepath = os.path.join(clob_subdir, clob_filename)
+                            
+                            # Write CLOB content to a text file
+                            with open(clob_filepath, 'w', encoding='utf-8') as file:
+                                file.write(str(value))
+                            
+                            # Set the cell value to the filename
+                            cell_value = clob_filename
+
+                            # Create a hyperlink in the Excel cell to the CLOB text file
+                            cell = sheet.cell(row=r_idx, column=c_idx, value=clob_filename)
+                            cell.hyperlink = clob_filepath
+                            cell.style = "Hyperlink"
+
+                        else:
+                            # In case of a NaN CLOB value
+                            cell_value = ''
                     # Convert datetime64 and date values to Excel date format
                     elif isinstance(value, pd.Timestamp):
                         cell_value = value.to_pydatetime()
