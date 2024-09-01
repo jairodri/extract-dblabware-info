@@ -30,8 +30,14 @@ def connect_to_oracle(host:str, port:int, service_name:str, username:str, passwo
         return None
 
 
+def remove_illegal_chars(value):
+    if isinstance(value, str):
+        # Eliminar caracteres ASCII de control (excepto \n y \r)
+        return ''.join(c for c in value if c.isprintable() or c in ('\n', '\r'))
+    return value
 
-def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, password:str, owner:str):
+
+def get_dbinfo_metadata(connection_info: dict):
     """
     Retrieves metadata information from the Oracle database's catalog tables for the specified owner and 
     returns it as a structured dictionary.
@@ -95,6 +101,12 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
       error message, and stores an empty DataFrame or dictionary in the result.
     - The function uses SQLAlchemy to handle database connections and execute SQL queries.
     """
+    host = connection_info['host']
+    port = connection_info['port']
+    service_name = connection_info['service_name']
+    username = connection_info['username']
+    password = connection_info['password']
+    owner = connection_info['owner']
     engine = connect_to_oracle(host, port, service_name, username, password)
 
     if engine is None:
@@ -226,8 +238,14 @@ def get_dbinfo_metadata(host:str, port:int, service_name:str, username:str, pass
     return catalog_tables
 
 
-def get_dbinfo_table(host:str, port:int, service_name:str, username:str, password:str, owner:str, table_name: str):
+def get_dbinfo_table(connection_info: dict, table_name: str):
 
+    host = connection_info['host']
+    port = connection_info['port']
+    service_name = connection_info['service_name']
+    username = connection_info['username']
+    password = connection_info['password']
+    owner = connection_info['owner']
     engine = connect_to_oracle(host, port, service_name, username, password)
 
     if engine is None:
@@ -273,17 +291,44 @@ def get_dbinfo_table(host:str, port:int, service_name:str, username:str, passwor
     return table_dict
 
 
-def get_dbinfo_all_tables(host:str, port:int, service_name:str, username:str, password:str, owner:str):
+def get_dbinfo_all_tables(connection_info: dict, total_records_limit: int = 500000, max_records_per_table: int = 50000):
 
+    host = connection_info['host']
+    port = connection_info['port']
+    service_name = connection_info['service_name']
+    username = connection_info['username']
+    password = connection_info['password']
+    owner = connection_info['owner']
     engine = connect_to_oracle(host, port, service_name, username, password)
 
     if engine is None:
         return None
 
     all_tables = {}
-
+    total_records_retrieved = 0 
+    tables_to_exclude = [
+        'DB_FILES',
+        'LIR_RPT_GENERADOS',
+        'SAP_LINK',
+        'TOOLBAR',
+        'WORKFLOW_DETAIL'
+    ]
     with engine.connect() as connection:
-        query = f"select TABLE_NAME from SYS.ALL_TABLES where OWNER = '{owner}' order by TABLE_NAME"
+        # Consulta para encontrar tablas con 'AUDIT', 'CONFIG' o '_LOG' en el nombre
+        query = f"""
+        SELECT TABLE_NAME 
+        FROM SYS.ALL_TABLES 
+        WHERE OWNER = '{owner}' 
+        AND (TABLE_NAME LIKE '%AUDIT%' OR TABLE_NAME LIKE '%CONFIG%' OR TABLE_NAME LIKE '%\_LOG' ESCAPE '\\')
+        """
+        try:
+            df = pd.read_sql(query, connection)
+            tables_to_exclude.extend(df['table_name'].tolist())
+        except SQLAlchemyError as e:
+            print(f"Error retrieving tables: {e}")
+
+        tablas_excluded = ', '.join(f"'{table}'" for table in tables_to_exclude)
+        query = f"select TABLE_NAME from SYS.ALL_TABLES where OWNER = '{owner}' and TABLE_NAME not in ({tablas_excluded})  order by TABLE_NAME"
         try:
             df = pd.read_sql(query, connection)
             for _, row in df.iterrows():
@@ -301,7 +346,7 @@ def get_dbinfo_all_tables(host:str, port:int, service_name:str, username:str, pa
 
         for object_table, table_info in all_tables.items():
             table_name = table_info['name']
-            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' order by COLUMN_ID"
+            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' and COLUMN_NAME <> 'AUDIT' order by COLUMN_ID"
             try:
                 df = pd.read_sql(query, connection)
                 fields_dict = {}
@@ -320,13 +365,25 @@ def get_dbinfo_all_tables(host:str, port:int, service_name:str, username:str, pa
         for object_table, table_info in all_tables.items():
             table_name = table_info['name']
             fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
-            query = f"select {fields} from {owner}.{table_name}"
+            query = f"select {fields} from {owner}.{table_name} FETCH FIRST {max_records_per_table} ROWS ONLY"
             try:
                 df = pd.read_sql(query, connection)
-                all_tables[table_name]["data"] = df 
+                cleaned_df = df.applymap(remove_illegal_chars)
+                all_tables[table_name]["data"] = cleaned_df 
+                num_rows = len(df)
+                total_records_retrieved += num_rows
+                if total_records_retrieved > total_records_limit:
+                    print(f"Total records limit of {total_records_limit} reached working with {table_name}. Stopping further data retrieval.")
+                    break
             except SQLAlchemyError as e:
                 print(f"Error retrieving {catalog_table}: {e}")
                 all_tables[table_name]["data"] = pd.DataFrame()
+
+        # Una vez que se alcanza el límite, eliminar las tablas sin datos del diccionario
+        if total_records_retrieved >= total_records_limit:
+            for table_name in list(all_tables.keys()):
+                if all_tables[table_name]["data"].empty:
+                    del all_tables[table_name]
 
     return all_tables
 
@@ -439,8 +496,9 @@ def get_dbinfo_tables_with_clob(connection_info: dict):
         'TEST',
         'RESULT',
         'DB_FILES',
-        'CONFIG_PACKAGE',
+        'LIR_RPT_GENERADOS',
         'PRODUCT_SPEC',
+        'SAP_LINK',
         'TOOLBAR',
         'WORKFLOW_DETAIL'
     ]

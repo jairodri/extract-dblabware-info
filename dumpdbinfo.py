@@ -54,7 +54,10 @@ def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str,
         # column names in dataframe are in lower case meanwhile in fields dictionary are in upper case
         for column_name, column_info in fields.items():
             if column_info['data_type'] in ['CLOB', 'LONG', 'VARCHAR', 'VARCHAR2']:
-                dataframe[column_name.lower()] = dataframe[column_name.lower()].str.replace(r'\r?\n', ' ', regex=True)
+                try:
+                    dataframe[column_name.lower()] = dataframe[column_name.lower()].str.replace(r'\r?\n', ' ', regex=True)
+                except KeyError as ex:
+                    print(f'{table_name}-{column_name}-{ex}')
 
         # Create the CSV file path using the table name
         file_path = os.path.join(output_dir, f"{table_name}.csv")
