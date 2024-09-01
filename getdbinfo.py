@@ -104,7 +104,7 @@ def get_dbinfo_metadata(connection_info: dict):
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
-    username = connection_info['username']
+    username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
     engine = connect_to_oracle(host, port, service_name, username, password)
@@ -243,7 +243,7 @@ def get_dbinfo_table(connection_info: dict, table_name: str):
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
-    username = connection_info['username']
+    username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
     engine = connect_to_oracle(host, port, service_name, username, password)
@@ -296,7 +296,7 @@ def get_dbinfo_all_tables(connection_info: dict, total_records_limit: int = 5000
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
-    username = connection_info['username']
+    username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
     engine = connect_to_oracle(host, port, service_name, username, password)
@@ -415,7 +415,7 @@ def get_dbinfo_tables(tables: dict, connection_info: dict, total_records_limit: 
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
-    username = connection_info['username']
+    username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
     engine = connect_to_oracle(host, port, service_name, username, password)
@@ -483,7 +483,7 @@ def get_dbinfo_tables_with_clob(connection_info: dict):
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
-    username = connection_info['username']
+    username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
     engine = connect_to_oracle(host, port, service_name, username, password)
