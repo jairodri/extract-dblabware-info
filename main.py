@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob
+from getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob, get_dbinfo_tables
 from dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
 from base64 import urlsafe_b64encode, urlsafe_b64decode
 
@@ -41,4 +41,7 @@ if __name__ == '__main__':
     # dump_dbinfo_to_csv(service_name, db_info_table, output_dir_data, sep='|')
     # dump_dbinfo_to_excel(service_name, db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000, file_name=table_name)
     # db_info_all_tables = get_dbinfo_all_tables(host, port, service_name, username, password, owner)
-    tables = get_dbinfo_tables_with_clob(connection_info)
+    tables_with_clob = get_dbinfo_tables_with_clob(connection_info)
+    tables_with_clob = get_dbinfo_tables(tables_with_clob, connection_info, total_records_limit=100000, max_records_per_table=20000)
+    # dump_dbinfo_to_csv(service_name, tables_with_clob, output_dir_data, sep='|')    
+    dump_dbinfo_to_excel(service_name, tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=20000)
