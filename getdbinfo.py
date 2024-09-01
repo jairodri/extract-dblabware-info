@@ -316,4 +316,132 @@ def get_dbinfo_all_tables(host:str, port:int, service_name:str, username:str, pa
                 print(f"Error retrieving {object_table}: {e}")
                 all_tables[object_table]["fields"] = {}
 
+    # Now we use the information in the list of fields to retrieve all the information contained in the tables.
+        for object_table, table_info in all_tables.items():
+            table_name = table_info['name']
+            fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
+            query = f"select {fields} from {owner}.{table_name}"
+            try:
+                df = pd.read_sql(query, connection)
+                all_tables[table_name]["data"] = df 
+            except SQLAlchemyError as e:
+                print(f"Error retrieving {catalog_table}: {e}")
+                all_tables[table_name]["data"] = pd.DataFrame()
+
     return all_tables
+
+
+def get_dbinfo_tables(tables: dict, connection_info: dict):
+
+    host = connection_info['host']
+    port = connection_info['port']
+    service_name = connection_info['service_name']
+    username = connection_info['username']
+    password = connection_info['password']
+    owner = connection_info['owner']
+    engine = connect_to_oracle(host, port, service_name, username, password)
+
+    if engine is None:
+        return None
+
+    with engine.connect() as connection:
+        for object_table, table_info in tables.items():
+            table_name = table_info['name']
+            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' order by COLUMN_ID"
+            try:
+                df = pd.read_sql(query, connection)
+                fields_dict = {}
+                for _, row in df.iterrows():
+                    column_name = row['column_name']
+                    fields_dict[column_name] = {
+                        "data_type": row['data_type'],
+                        "data_length": row['data_length']
+                    }
+                tables[object_table]["fields"] = fields_dict
+            except SQLAlchemyError as e:
+                print(f"Error retrieving {object_table}: {e}")
+                tables[object_table]["fields"] = {}
+
+    # Now we use the information in the list of fields to retrieve all the information contained in the tables.
+        for object_table, table_info in tables.items():
+            table_name = table_info['name']
+            fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
+            query = f"select {fields} from {owner}.{table_name}"
+            try:
+                df = pd.read_sql(query, connection)
+                tables[table_name]["data"] = df 
+            except SQLAlchemyError as e:
+                print(f"Error retrieving {catalog_table}: {e}")
+                tables[table_name]["data"] = pd.DataFrame()
+
+    return tables
+
+
+def get_dbinfo_tables_with_clob(connection_info: dict):
+    """
+    Retrieves information about tables containing CLOB fields, excluding specified tables.
+
+    Parameters:
+    -----------
+    connection_info : dict
+        Dictionary containing connection information to the Oracle database.
+
+    Returns:
+    --------
+    tables_with_clob : dict
+        Dictionary containing metadata for tables that have CLOB fields.
+    """
+ 
+    host = connection_info['host']
+    port = connection_info['port']
+    service_name = connection_info['service_name']
+    username = connection_info['username']
+    password = connection_info['password']
+    owner = connection_info['owner']
+    engine = connect_to_oracle(host, port, service_name, username, password)
+
+    if engine is None:
+        return None
+
+    tables_to_exclude = [
+        'SAMPLE',
+        'TEST',
+        'RESULT'
+    ]
+    tables_with_clob = {}
+
+    with engine.connect() as connection:
+        # Consulta para encontrar tablas con 'AUDIT' o '_LOG' en el nombre
+        query = f"""
+        SELECT TABLE_NAME 
+        FROM SYS.ALL_TABLES 
+        WHERE OWNER = '{owner}' 
+        AND (TABLE_NAME LIKE '%AUDIT%' OR TABLE_NAME LIKE '%\_LOG' ESCAPE '\\')
+        """
+        try:
+            df = pd.read_sql(query, connection)
+            tables_to_exclude.extend(df['table_name'].tolist())
+        except SQLAlchemyError as e:
+            print(f"Error retrieving tables: {e}")
+
+        tablas_excluded = ', '.join(f"'{table}'" for table in tables_to_exclude)
+        query = f"select distinct TABLE_NAME from SYS.ALL_TAB_COLS where OWNER = '{owner}' " \
+                f" and TABLE_NAME not in ({tablas_excluded}) " \
+                f" and DATA_TYPE = 'CLOB'" \
+                f" order by TABLE_NAME"
+        try:
+            df = pd.read_sql(query, connection)
+            for _, row in df.iterrows():
+                table_name = row['table_name']
+                tables_with_clob[table_name] = {
+                    "name": table_name,
+                    "order": "",
+                    "field_owner": "",
+                    "index": "",
+                    "fields": {},  
+                    "data": pd.DataFrame()
+                }
+        except SQLAlchemyError as e:
+            print(f"Error retrieving tables: {e}")
+
+    return tables_with_clob
