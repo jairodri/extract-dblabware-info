@@ -287,7 +287,7 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
                         # Handle CLOB data by writing it to a text file
                         if pd.notna(value):
                             # Define the filename for the CLOB content
-                            clob_filename = f"{table_name}_{column_names[c_idx-1]}_{r_idx:06}.txt"
+                            clob_filename = f"{table_name}__{column_names[c_idx-1]}_{r_idx:06}.txt"
                             clob_filepath = os.path.join(clob_subdir, clob_filename)
                             
                             # Write CLOB content to a text file
