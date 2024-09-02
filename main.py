@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob, get_dbinfo_tables
 from dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
-from comparefiles import compare_folders_and_save_diffs
+from comparefiles import compare_folders_and_save_diffs, generate_excel_from_diffs
 
 
 def load_grouped_vars(prefix):
@@ -56,6 +56,7 @@ if __name__ == '__main__':
     # dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep='|')    
     # dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=20000)
     #
-    compare_folders_and_save_diffs(folder_in1, folder_in2, folder_out)
+    # compare_folders_and_save_diffs(folder_in1, folder_in2, folder_out)
+    generate_excel_from_diffs(folder_in1, folder_in2, folder_out)
 
 

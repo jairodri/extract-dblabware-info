@@ -1,6 +1,8 @@
 import os
 import difflib
 import pandas as pd
+from openpyxl import Workbook
+import re
 
 
 def compare_files(file1, file2, output_file):
@@ -85,9 +87,49 @@ def compare_folders_and_save_diffs(folder1, folder2, diff_folder):
     
     # Crear un dataframe con los resultados
     diffs_df = pd.DataFrame(diffs_data, columns=['diff_file', 'diff_lines'])
-    print(diffs_data)
+
     return diffs_df
 
+
+def generate_excel_from_diffs(folder1, folder2, diff_folder):
+    """
+    Genera un archivo Excel con las diferencias encontradas entre los archivos de dos carpetas.
+    
+    Parámetros:
+    - folder1: Ruta a la primera carpeta.
+    - folder2: Ruta a la segunda carpeta.
+    - diff_folder: Ruta a la carpeta donde se guardarán los archivos de diferencias y el archivo Excel.
+    
+    El archivo Excel se guarda en 'diff_folder' con el nombre 'diff.xlsx'.
+    """
+    # Llama a la función para comparar las carpetas y obtener el dataframe
+    diffs_df = compare_folders_and_save_diffs(folder1, folder2, diff_folder)
+    
+    # Solo procedemos si hay diferencias
+    if not diffs_df.empty:
+        # Crear un nuevo Workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Diferencias"
+
+        # Escribir la cabecera en el archivo Excel
+        ws.append(['table_name', 'diff_file', 'diff_lines'])
+        
+        # Iterar a través del DataFrame y extraer la información
+        for index, row in diffs_df.iterrows():
+            diff_file = row['diff_file']
+            diff_lines = row['diff_lines']
+            
+            # Obtener el nombre de la tabla desde el nombre del archivo de diferencias
+            table_name_match = re.match(r"(.+?)__", diff_file)
+            table_name = table_name_match.group(1) if table_name_match else "Unknown"
+            
+            # Escribir la fila en el archivo Excel
+            ws.append([table_name, diff_file, diff_lines])
+        
+        # Guardar el archivo Excel en la carpeta diff_folder
+        excel_path = os.path.join(diff_folder, 'diff.xlsx')
+        wb.save(excel_path)
 
 
 
