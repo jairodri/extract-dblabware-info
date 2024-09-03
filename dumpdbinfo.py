@@ -291,7 +291,7 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
                             clob_filepath = os.path.join(clob_subdir, clob_filename)
                             
                             # Write CLOB content to a text file
-                            with open(clob_filepath, 'w', encoding='utf-8') as file:
+                            with open(clob_filepath, 'w') as file:
                                 file.write(str(value))
                             
                             # Set the cell value to the filename

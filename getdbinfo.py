@@ -452,12 +452,14 @@ def get_dbinfo_tables(tables: dict, connection_info: dict, total_records_limit: 
 
             try:
                 df = pd.read_sql(query, connection)
+                cleaned_df = df.applymap(remove_illegal_chars)
+                tables[table_name]["data"] = cleaned_df 
                 num_rows = len(df)
                 total_records_retrieved += num_rows
                 if total_records_retrieved > total_records_limit:
-                    print(f"Total records limit of {total_records_limit} reached. Stopping further data retrieval.")
+                    print(f"Total records limit of {total_records_limit} reached working with {table_name}. Stopping further data retrieval.")
                     break
-                tables[table_name]["data"] = df 
+                
             except SQLAlchemyError as e:
                 print(f"Error retrieving {table_name}: {e}")
                 tables[table_name]["data"] = pd.DataFrame()

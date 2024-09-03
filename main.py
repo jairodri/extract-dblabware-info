@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob, get_dbinfo_tables
 from dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
-from comparefiles import compare_folders_and_save_diffs, generate_excel_from_diffs
+from comparefiles import compare_folders_and_save_diffs, generate_excel_from_diffs, compare_files
 
 
 def load_grouped_vars(prefix):
@@ -32,6 +32,11 @@ folder_in1 = os.getenv('COMPARE_FOLDER_IN1')
 folder_in2 = os.getenv('COMPARE_FOLDER_IN2')
 folder_out = os.getenv('COMPARE_FOLDER_OUT')
 
+# Get the files to compare
+file_in1 = os.getenv('COMPARE_FILE_IN1')
+file_in2 = os.getenv('COMPARE_FILE_IN2')
+file_out = os.getenv('COMPARE_FILE_OUT')
+
 
 if __name__ == '__main__':
     #
@@ -58,5 +63,6 @@ if __name__ == '__main__':
     #
     # compare_folders_and_save_diffs(folder_in1, folder_in2, folder_out)
     generate_excel_from_diffs(folder_in1, folder_in2, folder_out)
+    # compare_files(file_in1, file_in2, file_out)
 
 
