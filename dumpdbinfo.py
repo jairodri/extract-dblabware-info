@@ -6,6 +6,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.hyperlink import Hyperlink
 from datetime import datetime, date
+import re
 
 
 def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str, sep: str=','):
@@ -266,6 +267,8 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
         fields = item_data['fields']
         column_names = list(fields.keys())
         data_types = [value['data_type'] for value in fields.values()]
+        index_list = item_data['index']
+
         # Limit the number of records to max_records_per_table
         limited_dataframe = dataframe.head(max_records_per_table)
 
@@ -286,8 +289,15 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
                     if data_types[c_idx-1] == 'LONG' or data_types[c_idx-1] == 'CLOB':
                         # Handle CLOB data by writing it to a text file
                         if pd.notna(value):
+                            # Construir la parte final del nombre del archivo usando los valores de las columnas en index_list
+                            index_values = [str(sheet.cell(row=r_idx, column=column_names.index(index_col)+1).value) for index_col in index_list]
+                            index_part = "_".join(index_values)
+
                             # Define the filename for the CLOB content
-                            clob_filename = f"{table_name}__{column_names[c_idx-1]}_{r_idx:06}.txt"
+                            clob_filename = f"{table_name}__{column_names[c_idx-1]}_{index_part}.txt"
+                            # sustituimos los caracteres no válidos por _
+                            clob_filename = re.sub(r'[^\w_. -]', '_', clob_filename)
+                            # clob_filename = f"{table_name}__{column_names[c_idx-1]}_{r_idx:06}.txt"
                             clob_filepath = os.path.join(clob_subdir, clob_filename)
                             
                             # Write CLOB content to a text file

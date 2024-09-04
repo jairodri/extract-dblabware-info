@@ -18,7 +18,7 @@ def load_grouped_vars(prefix):
 load_dotenv()
 
 # Get the database connections params
-connection_info = load_grouped_vars('DEV_PET_V8_')
+connection_info = load_grouped_vars('PRE_COR_V8_')
 
 # Get the directory where the output files will be saved
 output_dir_metadata = os.getenv('OUTPUT_DIR_METADATA')
@@ -42,13 +42,14 @@ if __name__ == '__main__':
     #
     # 1 - Get catalog info and dump it to csv/excel file
     # db_info_catalog = get_dbinfo_metadata(connection_info)
-    # dump_dbinfo_to_csv(connection_info['service_name'], db_info_catalog, output_dir_metadata, sep='|')
     # dump_dbinfo_to_excel(connection_info['service_name'], db_info_catalog, output_dir_metadata)
+    # dump_dbinfo_to_csv(connection_info['service_name'], db_info_catalog, output_dir_metadata, sep='|')
+
     #
     # 2 - Get data from a specific table and dump it to csv/excel file
     # db_info_table = get_dbinfo_table(connection_info, table_name)
-    # dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|')
     # dump_dbinfo_to_excel(connection_info['service_name'], db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000, file_name=table_name)
+    # dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|')
     #
     # 3 - Get data from all tables and dump them to csv/excel file
     # db_info_all_tables = get_dbinfo_all_tables(connection_info, total_records_limit=300000, max_records_per_table=10000)
@@ -58,11 +59,14 @@ if __name__ == '__main__':
     # 4 - Get data from tables with clob fields and dump to csv/excel file
     # tables_with_clob = get_dbinfo_tables_with_clob(connection_info)
     # tables_with_clob = get_dbinfo_tables(tables_with_clob, connection_info, total_records_limit=100000, max_records_per_table=20000)
-    # dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep='|')    
     # dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=20000)
+    # dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep='|')    
+
     #
+    # 5 - Compare files and generate excel with differences
+    # compare_files(file_in1, file_in2, file_out)
     # compare_folders_and_save_diffs(folder_in1, folder_in2, folder_out)
     generate_excel_from_diffs(folder_in1, folder_in2, folder_out)
-    # compare_files(file_in1, file_in2, file_out)
+
 
 

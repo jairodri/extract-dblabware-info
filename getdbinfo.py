@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.exc import SQLAlchemyError
 import pandas as pd
+import re
 
 
 def connect_to_oracle(host:str, port:int, service_name:str, username:str, password:str):
@@ -271,7 +272,7 @@ def get_dbinfo_table(connection_info: dict, table_name: str):
                 "name": table_name,
                 "order": "",
                 "field_owner": "",
-                "index": "",
+                "index": [],
                 "fields": fields_dict,  
                 "data": pd.DataFrame()
             }
@@ -279,8 +280,48 @@ def get_dbinfo_table(connection_info: dict, table_name: str):
             print(f"Error retrieving {table_name}: {e}")
             table_dict[table_name]["fields"] = {}
 
+        index_list = []
+        # # Recuperamos el índice único y sus campos si lo tuviera
+        # query = f"""
+        #     SELECT s.COLUMN_NAME 
+        #     FROM SYS.ALL_IND_COLUMNS s 
+        #     WHERE s.INDEX_NAME = (
+        #         SELECT i.INDEX_NAME 
+        #         FROM SYS.ALL_INDEXES i 
+        #         WHERE i.TABLE_NAME = '{table_name}' 
+        #         AND i.UNIQUENESS = 'UNIQUE'
+        #     ) 
+        #     ORDER BY s.COLUMN_POSITION
+        # """
+        # Vamos a utilizar la tabla de Constraints que nos ofrece mejores resultados para los campos clave
+        query = f"""
+            select SEARCH_CONDITION_VC 
+            from SYS.ALL_CONSTRAINTS s 
+            where s.TABLE_NAME = '{table_name}' 
+            and s.CONSTRAINT_TYPE = 'C'
+        """
+        try:
+            df = pd.read_sql(query, connection) 
+            if not df.empty:
+                # Lista para almacenar los nombres de los campos extraídos
+                index_list = []
+                for condition in df['SEARCH_CONDITION_VC'.lower()]:
+                    # Usamos una expresión regular para capturar el nombre del campo dentro de las comillas
+                    match = re.search(r'"([^"]+)"', condition)
+                    if match:
+                        field_name = match.group(1)  # Extraemos el nombre del campo sin las comillas
+                        index_list.append(field_name)
+                table_dict[table_name]["index"] = index_list
+        except SQLAlchemyError as e:
+            print(f"Error retrieving index of {table_name}: {e}")
+            table_dict[table_name]["index"] = []
+
         fields = ', '.join(f"{fld}" for fld in list(fields_dict.keys()))
-        query = f'select {fields} from {owner}.{table_name}'
+        if len(index_list) == 0:
+            query = f'select {fields} from {owner}.{table_name}'
+        else:
+            index = ', '.join(f"{fld}" for fld in index_list)
+            query = f'select {fields} from {owner}.{table_name} order by {index}'
         try:
             df = pd.read_sql(query, connection)
             table_dict[table_name]["data"] = df
@@ -443,13 +484,52 @@ def get_dbinfo_tables(tables: dict, connection_info: dict, total_records_limit: 
                 print(f"Error retrieving {object_table}: {e}")
                 tables[object_table]["fields"] = {}
 
+            # # Recuperamos el índice único y sus campos si lo tuviera
+            # query = f"""
+            #     SELECT s.COLUMN_NAME 
+            #     FROM SYS.ALL_IND_COLUMNS s 
+            #     WHERE s.INDEX_NAME = (
+            #         SELECT i.INDEX_NAME 
+            #         FROM SYS.ALL_INDEXES i 
+            #         WHERE i.TABLE_NAME = '{table_name}' 
+            #         AND i.UNIQUENESS = 'UNIQUE'
+            #     ) 
+            #     ORDER BY s.COLUMN_POSITION
+            # """
+            # Vamos a utilizar la tabla de Constraints que nos ofrece mejores resultados para los campos clave
+            query = f"""
+                select SEARCH_CONDITION_VC 
+                from SYS.ALL_CONSTRAINTS s 
+                where s.TABLE_NAME = '{table_name}' 
+                and s.CONSTRAINT_TYPE = 'C'
+            """
+            try:
+                df = pd.read_sql(query, connection) 
+                if not df.empty:
+                    # Lista para almacenar los nombres de los campos extraídos
+                    index_list = []
+                    for condition in df['SEARCH_CONDITION_VC'.lower()]:
+                        # Usamos una expresión regular para capturar el nombre del campo dentro de las comillas
+                        match = re.search(r'"([^"]+)"', condition)
+                        if match:
+                            field_name = match.group(1)  # Extraemos el nombre del campo sin las comillas
+                            index_list.append(field_name)
+
+                    tables[object_table]["index"] = index_list
+            except SQLAlchemyError as e:
+                print(f"Error retrieving index of {table_name}: {e}")
+                tables[object_table]["index"] = []
+
     # Now we use the information in the list of fields to retrieve all the information contained in the tables.
         for object_table, table_info in tables.items():
             table_name = table_info['name']
+            index_list = table_info['index']
             fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
-            # query = f"select {fields} from {owner}.{table_name}"
-            query = f"SELECT {fields} FROM {owner}.{table_name} FETCH FIRST {max_records_per_table} ROWS ONLY"
-
+            if len(index_list) == 0:
+                query = f"SELECT {fields} FROM {owner}.{table_name} FETCH FIRST {max_records_per_table} ROWS ONLY"
+            else:
+                index = ', '.join(f"{fld}" for fld in index_list)
+                query = f"SELECT {fields} FROM {owner}.{table_name} order by {index} FETCH FIRST {max_records_per_table} ROWS ONLY"
             try:
                 df = pd.read_sql(query, connection)
                 cleaned_df = df.applymap(remove_illegal_chars)
@@ -502,7 +582,11 @@ def get_dbinfo_tables_with_clob(connection_info: dict):
         'PRODUCT_SPEC',
         'SAP_LINK',
         'TOOLBAR',
-        'WORKFLOW_DETAIL'
+        'V_ODBC_PRODUCT_SPEC',
+        'WORKFLOW_DETAIL',
+        'VW_HIGHCHART_FILES',
+        'VW_HTML_ELEMENT',
+        'VW_HTML_PARAM'
     ]
     tables_with_clob = {}
 
@@ -533,7 +617,7 @@ def get_dbinfo_tables_with_clob(connection_info: dict):
                     "name": table_name,
                     "order": "",
                     "field_owner": "",
-                    "index": "",
+                    "index": [],
                     "fields": {},  
                     "data": pd.DataFrame()
                 }
