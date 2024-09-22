@@ -846,20 +846,39 @@ def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list):
     return tables_with_clob
 
 
-def get_dbinfo_list_of_tables(tables: list, connection_info: dict, version: str = 'v8', sql_filter: str = None):
+def get_dbinfo_list_of_tables(tables: list, connection_info: dict):
+    """
+    Retrieves detailed information for a list of tables from an Oracle database.
 
+    For each table in the provided list, the function calls `get_dbinfo_table` to gather metadata 
+    such as column names, data types, and other table properties. The results are stored in a dictionary 
+    with the table names as keys.
+
+    Parameters:
+    -----------
+    tables : list
+        A list of table names for which data is to be retrieved.
+
+    connection_info : dict
+        Dictionary containing connection details for the Oracle database, including host, port, service name, 
+        username, password, and owner.
+
+    Returns:
+    --------
+    info_tables : dict
+        A dictionary where the keys are table names and the values are detailed metadata information 
+        about each table, as returned by `get_dbinfo_table`. If a table's information cannot be retrieved, 
+        it is excluded from the result.
+    """
     info_tables = {}
 
     for table in tables:
         table_name = table
-        info_tables[table_name] = {
-            "name": table_name,
-            "order": "",
-            "field_owner": "",
-            "index": [],
-            "fields": {},  
-            "data": pd.DataFrame()
-        }
+        # Call get_dbinfo_table to retrieve table information
+        table_info = get_dbinfo_table(connection_info, table_name)
+        
+        # Store the table info in the dictionary using table_name as the key
+        if table_info is not None:
+            info_tables[table_name] = table_info[table_name]
 
-    info_tables = get_dbinfo_tables(info_tables, connection_info, total_records_limit=0, max_records_per_table=0, version=version, sql_filter=sql_filter)
     return info_tables

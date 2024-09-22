@@ -32,6 +32,8 @@ sql_filter = os.getenv('SQL_FILTER')
 # Convert environment variable from string to list
 tables_with_clob_to_exclude = os.getenv('TABLES_WITH_CLOB_TO_EXCLUDE', '').split(',')
 tables_with_clob_to_exclude = [table.strip() for table in tables_with_clob_to_exclude]  # Remove any extra spaces
+table_list = os.getenv('TABLE_LIST', '').split(',')
+table_list = [table.strip() for table in table_list]  # Remove any extra spaces
 
 # Get the folders to compare
 folder_in1 = os.getenv('COMPARE_FOLDER_IN1')
@@ -63,17 +65,14 @@ if __name__ == '__main__':
     # dump_dbinfo_to_excel(connection_info['service_name'], db_info_all_tables, output_dir_data, include_record_count=True, max_records_per_table=10000)
     # 
     # 4 - Get data from tables with clob fields and dump to csv/excel file
-    tables_with_clob = get_dbinfo_tables_with_clob(connection_info, tables_with_clob_to_exclude)
-    dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=20000)
+    # tables_with_clob = get_dbinfo_tables_with_clob(connection_info, tables_with_clob_to_exclude)
+    # dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=20000)
     # dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep='|')    
     #
     # 5 - Get data from a list of tables and dump to csv/excel file
-    # tables = ['V_SAMPLE', 'V_TEST', 'V_RESULT', 'V_UNITS']
-    # tables = ['V_UNITS']
-    # info_tables = get_dbinfo_list_of_tables(tables, connection_info, version='v6')
-    # dump_dbinfo_to_csv(connection_info['service_name'], info_tables, output_dir_data, sep='|') 
-    #
-    # dump_dbinfo_to_excel(connection_info['service_name'], info_tables, output_dir_data, include_record_count=True, max_records_per_table=20000)
+    info_tables = get_dbinfo_list_of_tables(table_list, connection_info)
+    dump_dbinfo_to_csv(connection_info['service_name'], info_tables, output_dir_data, sep='|') 
+    dump_dbinfo_to_excel(connection_info['service_name'], info_tables, output_dir_data, include_record_count=True, max_records_per_table=20000)
     #
     # 6 - Compare files and generate excel with differences
     # compare_files(file_in1, file_in2, file_out)
