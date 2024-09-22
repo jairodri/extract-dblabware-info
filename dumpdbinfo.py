@@ -9,7 +9,7 @@ from datetime import datetime, date
 import re
 
 
-def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str, sep: str=','):
+def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str, sep: str=',', suffix: str = None):
     """
     Saves each DataFrame in the provided dictionary to a CSV file, organizing the files within a directory 
     named after the service.
@@ -32,6 +32,10 @@ def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str,
 
     sep : str, optional
         Field delimiter for the output CSV files. The default is a comma.
+
+    suffix : str, optional
+        A suffix to append to the file names. If provided, the suffix will be added to each table name before 
+        saving the CSV files. Default is None.
 
     Returns:
     --------
@@ -61,6 +65,9 @@ def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str,
                     print(f'{table_name}-{column_name}-{ex}')
 
         # Create the CSV file path using the table name
+        if suffix is not None:
+            table_name = table_name + suffix
+
         file_path = os.path.join(output_dir, f"{table_name}.csv")
         
         # Save the DataFrame to a CSV file with the specified delimiter and without the index
@@ -192,6 +199,7 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
             - 'name': The name of the table.
             - 'data': A pandas DataFrame containing the table's data.
             - 'fields': A dictionary describing each column's metadata including data type.
+            - 'index': A list of column names used to uniquely identify each row (useful for naming CLOB text files).
 
     output_dir : str
         The directory where the Excel file will be saved. The function ensures the directory structure includes a 
@@ -202,6 +210,10 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
 
     max_records_per_table : int, optional
         The maximum number of records to include per table in the Excel sheet. Default is 50,000.
+
+    file_name : str, optional
+        The name of the Excel file to be generated. If not provided, the file will be named using `folder_name`. 
+        Default is None.
 
     Returns:
     --------
@@ -217,6 +229,7 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
     - If `include_record_count` is set to True, the index sheet will include an additional column showing the number of records in each table.
     - For columns with data types 'CLOB' or 'LONG', the content is saved in separate text files in a 'CLOB' subdirectory, 
       and the cell in Excel contains a hyperlink to these files, allowing easy access to large text data.
+    - The `file_name` parameter allows specifying the name of the generated Excel file; otherwise, it defaults to the `folder_name`.
     """
 
     # Ensure the output directory includes the database name
@@ -297,7 +310,6 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
                             clob_filename = f"{table_name}__{column_names[c_idx-1]}_{index_part}.txt"
                             # sustituimos los caracteres no válidos por _
                             clob_filename = re.sub(r'[^\w_. -]', '_', clob_filename)
-                            # clob_filename = f"{table_name}__{column_names[c_idx-1]}_{r_idx:06}.txt"
                             clob_filepath = os.path.join(clob_subdir, clob_filename)
                             
                             # Write CLOB content to a text file
@@ -323,6 +335,7 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
                     else:
                         # Ensure the value is converted to a string if it's not a basic data type
                         cell_value = str(value) if not isinstance(value, (int, float, type(None))) else value
+
                     cell = sheet.cell(row=r_idx, column=c_idx, value=cell_value)
 
         
@@ -350,4 +363,5 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
         excel_file_path = os.path.join(output_dir, f"{folder_name}.xlsx")
     else:
         excel_file_path = os.path.join(output_dir, f"{file_name}.xlsx")
+
     workbook.save(excel_file_path)

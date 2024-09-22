@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob, get_dbinfo_tables
+from getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob, get_dbinfo_tables, get_dbinfo_list_of_tables
 from dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
 from comparefiles import compare_folders_and_save_diffs, generate_excel_from_diffs, compare_files
 
@@ -18,7 +18,7 @@ def load_grouped_vars(prefix):
 load_dotenv()
 
 # Get the database connections params
-connection_info = load_grouped_vars('PRE_COR_V8_')
+connection_info = load_grouped_vars('PRE_PET_V8_')
 
 # Get the directory where the output files will be saved
 output_dir_metadata = os.getenv('OUTPUT_DIR_METADATA')
@@ -26,6 +26,8 @@ output_dir_data = os.getenv('OUTPUT_DIR_DATA')
 
 # Get the table to extract 
 table_name = os.getenv('TABLE_NAME')
+sql_query = os.getenv('SQL_QUERY')
+sql_filter = os.getenv('SQL_FILTER')
 
 # Get the folders to compare
 folder_in1 = os.getenv('COMPARE_FOLDER_IN1')
@@ -47,9 +49,12 @@ if __name__ == '__main__':
 
     #
     # 2 - Get data from a specific table and dump it to csv/excel file
+    # db_info_table = get_dbinfo_table(connection_info, table_name, sql_query=result_query+result_filter_001)
+    # dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|', suffix='_001')
     # db_info_table = get_dbinfo_table(connection_info, table_name)
-    # dump_dbinfo_to_excel(connection_info['service_name'], db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000, file_name=table_name)
-    # dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|')
+    db_info_table = get_dbinfo_table(connection_info, None, sql_query=sql_query)
+    dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|')
+    dump_dbinfo_to_excel(connection_info['service_name'], db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000, file_name='SAMPLE')
     #
     # 3 - Get data from all tables and dump them to csv/excel file
     # db_info_all_tables = get_dbinfo_all_tables(connection_info, total_records_limit=300000, max_records_per_table=10000)
@@ -61,12 +66,19 @@ if __name__ == '__main__':
     # tables_with_clob = get_dbinfo_tables(tables_with_clob, connection_info, total_records_limit=100000, max_records_per_table=20000)
     # dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=20000)
     # dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep='|')    
-
     #
-    # 5 - Compare files and generate excel with differences
+    # 5 - Get data from a list of tables and dump to csv/excel file
+    # tables = ['V_SAMPLE', 'V_TEST', 'V_RESULT', 'V_UNITS']
+    # tables = ['V_UNITS']
+    # info_tables = get_dbinfo_list_of_tables(tables, connection_info, version='v6')
+    # dump_dbinfo_to_csv(connection_info['service_name'], info_tables, output_dir_data, sep='|') 
+    #
+    # dump_dbinfo_to_excel(connection_info['service_name'], info_tables, output_dir_data, include_record_count=True, max_records_per_table=20000)
+    #
+    # 6 - Compare files and generate excel with differences
     # compare_files(file_in1, file_in2, file_out)
     # compare_folders_and_save_diffs(folder_in1, folder_in2, folder_out)
-    generate_excel_from_diffs(folder_in1, folder_in2, folder_out)
+    # generate_excel_from_diffs(folder_in1, folder_in2, folder_out)
 
 
 
