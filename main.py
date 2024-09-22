@@ -29,6 +29,10 @@ table_name = os.getenv('TABLE_NAME')
 sql_query = os.getenv('SQL_QUERY')
 sql_filter = os.getenv('SQL_FILTER')
 
+# Convert environment variable from string to list
+tables_with_clob_to_exclude = os.getenv('TABLES_WITH_CLOB_TO_EXCLUDE', '').split(',')
+tables_with_clob_to_exclude = [table.strip() for table in tables_with_clob_to_exclude]  # Remove any extra spaces
+
 # Get the folders to compare
 folder_in1 = os.getenv('COMPARE_FOLDER_IN1')
 folder_in2 = os.getenv('COMPARE_FOLDER_IN2')
@@ -49,12 +53,9 @@ if __name__ == '__main__':
 
     #
     # 2 - Get data from a specific table and dump it to csv/excel file
-    # db_info_table = get_dbinfo_table(connection_info, table_name, sql_query=result_query+result_filter_001)
-    # dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|', suffix='_001')
-    # db_info_table = get_dbinfo_table(connection_info, table_name)
-    db_info_table = get_dbinfo_table(connection_info, None, sql_query=sql_query)
-    dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|')
-    dump_dbinfo_to_excel(connection_info['service_name'], db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000, file_name='SAMPLE')
+    # db_info_table = get_dbinfo_table(connection_info, table_name, sql_query=sql_query)
+    # dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|')
+    # dump_dbinfo_to_excel(connection_info['service_name'], db_info_table, output_dir_data, include_record_count=True, max_records_per_table=20000, file_name='SAMPLE')
     #
     # 3 - Get data from all tables and dump them to csv/excel file
     # db_info_all_tables = get_dbinfo_all_tables(connection_info, total_records_limit=300000, max_records_per_table=10000)
@@ -62,9 +63,8 @@ if __name__ == '__main__':
     # dump_dbinfo_to_excel(connection_info['service_name'], db_info_all_tables, output_dir_data, include_record_count=True, max_records_per_table=10000)
     # 
     # 4 - Get data from tables with clob fields and dump to csv/excel file
-    # tables_with_clob = get_dbinfo_tables_with_clob(connection_info)
-    # tables_with_clob = get_dbinfo_tables(tables_with_clob, connection_info, total_records_limit=100000, max_records_per_table=20000)
-    # dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=20000)
+    tables_with_clob = get_dbinfo_tables_with_clob(connection_info, tables_with_clob_to_exclude)
+    dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=20000)
     # dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep='|')    
     #
     # 5 - Get data from a list of tables and dump to csv/excel file
