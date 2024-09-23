@@ -369,7 +369,7 @@ def get_dbinfo_metadata(connection_info: dict):
     return catalog_tables
 
 
-def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = None, sql_query: str = None):
+def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = None, sql_query: str = None, max_records_per_table: int = 50000):
     """
     Retrieve detailed information from the specified table in the Oracle database, including field names, types, 
     lengths, and index information.
@@ -499,11 +499,15 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
             fields = ', '.join(f"{fld}" for fld in list(fields_dict.keys()))
             index = ', '.join(f"{fld}" for fld in index_list)
             query = f"SELECT {fields} FROM {owner}.{table_name}"
-            query2 = f" ORDER BY {index}"
+            query2 = f"ORDER BY {index}"
+            query3 = f"FETCH FIRST {max_records_per_table} ROWS ONLY"
             if sql_filter is not None:
                 query = query + ' ' + sql_filter
+   
             if len(index_list) > 0:
-                query = query + query2
+                query = query + ' ' + query2
+
+            query = query + ' ' + query3 
         else:
             query = sql_query
 
@@ -517,154 +521,7 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
     return table_dict
 
 
-def get_dbinfo_tables(tables: dict, connection_info: dict, total_records_limit: int = 500000, max_records_per_table: int = 50000):
-    """
-    Retrieves data from specified tables with limits on the total number of records retrieved and the maximum records per table.
-
-    Parameters:
-    -----------
-    tables : dict
-        Dictionary containing metadata for tables including their names and fields.
-
-    connection_info : dict
-        Dictionary containing connection information to the Oracle database.
-
-    total_records_limit : int, optional
-        The maximum number of records to retrieve in total from all tables. Default is 500,000.
-
-    max_records_per_table : int, optional
-        The maximum number of records to retrieve from each table. Default is 50,000.
-
-    Returns:
-    --------
-    tables : dict
-        The updated dictionary containing metadata and data for each table retrieved from the database.
-    """
-
-    host = connection_info['host']
-    port = connection_info['port']
-    service_name = connection_info['service_name']
-    username = connection_info['user']
-    password = connection_info['password']
-    owner = connection_info['owner']
-    engine = connect_to_oracle(host, port, service_name, username, password)
-
-    if engine is None:
-        return None
-
-    total_records_retrieved = 0  
-
-    with engine.connect() as connection:
-        for object_table, table_info in tables.items():
-            table_name = table_info['name']
-            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' and COLUMN_NAME <> 'AUDIT' order by COLUMN_ID"
-            try:
-                df = pd.read_sql(query, connection)
-                fields_dict = {}
-                for _, row in df.iterrows():
-                    column_name = row['column_name']
-                    fields_dict[column_name] = {
-                        "data_type": row['data_type'],
-                        "data_length": row['data_length']
-                    }
-                tables[object_table]["fields"] = fields_dict
-            except SQLAlchemyError as e:
-                print(f"Error retrieving {object_table}: {e}")
-                tables[object_table]["fields"] = {}
-
-            # # Recuperamos el índice único y sus campos si lo tuviera
-            # query = f"""
-            #     SELECT s.COLUMN_NAME 
-            #     FROM SYS.ALL_IND_COLUMNS s 
-            #     WHERE s.INDEX_NAME = (
-            #         SELECT i.INDEX_NAME 
-            #         FROM SYS.ALL_INDEXES i 
-            #         WHERE i.TABLE_NAME = '{table_name}' 
-            #         AND i.UNIQUENESS = 'UNIQUE'
-            #     ) 
-            #     ORDER BY s.COLUMN_POSITION
-            # """
-            if version == 'v6':
-                tables[object_table]["index"] = []
-            else:
-                # Vamos a utilizar la tabla de Constraints que nos ofrece mejores resultados para los campos clave
-                query = f"""
-                    select SEARCH_CONDITION_VC 
-                    from SYS.ALL_CONSTRAINTS s 
-                    where s.TABLE_NAME = '{table_name}' 
-                    and s.CONSTRAINT_TYPE = 'C'
-                """
-                try:
-                    df = pd.read_sql(query, connection) 
-                    if not df.empty:
-                        # Lista para almacenar los nombres de los campos extraídos
-                        index_list = []
-                        for condition in df['SEARCH_CONDITION_VC'.lower()]:
-                            # Usamos una expresión regular para capturar el nombre del campo dentro de las comillas
-                            match = re.search(r'"([^"]+)"', condition)
-                            if match:
-                                field_name = match.group(1)  # Extraemos el nombre del campo sin las comillas
-                                index_list.append(field_name)
-
-                        tables[object_table]["index"] = index_list
-                except SQLAlchemyError as e:
-                    print(f"Error retrieving index of {table_name}: {e}")
-                    tables[object_table]["index"] = []
-
-    # Now we use the information in the list of fields to retrieve all the information contained in the tables.
-        for object_table, table_info in tables.items():
-            table_name = table_info['name']
-            index_list = table_info['index']
-            index = ', '.join(f"{fld}" for fld in index_list)
-            fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
-            query = f"SELECT {fields} FROM {owner}.{table_name}"
-            query2 = f" order by {index}"
-            if sql_filter is not None:
-                query = query + sql_filter
-            if max_records_per_table > 0:
-                if version == 'v8':
-                    query3 = f" FETCH FIRST {max_records_per_table} ROWS ONLY"
-                else:
-                    query3 = f" where ROWNUM <= {max_records_per_table}"
-                query = query + query3
-
-            # if len(index_list) > 0:
-            #     query = query + query2
-            # if len(index_list) == 0:
-            #     if version == 'v8':
-            #         query = f"SELECT {fields} FROM {owner}.{table_name} FETCH FIRST {max_records_per_table} ROWS ONLY"
-            #     else:
-            #         query = f"SELECT {fields} FROM {owner}.{table_name} where ROWNUM <= {max_records_per_table} "
-            # else:
-            #     index = ', '.join(f"{fld}" for fld in index_list)
-            #     query = f"SELECT {fields} FROM {owner}.{table_name} order by {index} FETCH FIRST {max_records_per_table} ROWS ONLY"
-            try:
-                time1 = time.time()
-                df = pd.read_sql(query, connection)
-                time2 = time.time()
-                print(f'lectura: {time2 - time1} segundos')
-                cleaned_df = df.applymap(remove_illegal_chars)
-                time3 = time.time()
-                print(f'apply: {time3 - time2} segundos')
-                num_rows = len(df)
-                print(f'registros: {num_rows}')
-                if num_rows > 1000000:
-                    return None
-                tables[table_name]["data"] = cleaned_df 
-
-                total_records_retrieved += num_rows
-                if total_records_retrieved > total_records_limit and total_records_limit > 0:
-                    print(f"Total records limit of {total_records_limit} reached working with {table_name}. Stopping further data retrieval.")
-                    break
-                
-            except SQLAlchemyError as e:
-                print(f"Error retrieving {table_name}: {e}")
-                tables[table_name]["data"] = pd.DataFrame()
-
-    return tables
-
-
-def get_dbinfo_all_tables(connection_info: dict, total_records_limit: int = 500000, max_records_per_table: int = 50000):
+def get_dbinfo_all_tables(connection_info: dict, tables_to_exclude: list, total_records_limit: int = 500000, max_records_per_table: int = 50000):
 
     host = connection_info['host']
     port = connection_info['port']
@@ -679,15 +536,10 @@ def get_dbinfo_all_tables(connection_info: dict, total_records_limit: int = 5000
 
     all_tables = {}
     total_records_retrieved = 0 
-    tables_to_exclude = [
-        'DB_FILES',
-        'LIR_RPT_GENERADOS',
-        'SAP_LINK',
-        'TOOLBAR',
-        'WORKFLOW_DETAIL'
-    ]
+
     with engine.connect() as connection:
-        # Consulta para encontrar tablas con 'AUDIT', 'CONFIG' o '_LOG' en el nombre. Estas tablas serán exluidas de la descarga
+
+        # Query to find tables with 'AUDIT', 'CONFIG' or '_LOG' in the name
         query = f"""
         SELECT TABLE_NAME 
         FROM SYS.ALL_TABLES 
@@ -701,63 +553,40 @@ def get_dbinfo_all_tables(connection_info: dict, total_records_limit: int = 5000
             print(f"Error retrieving tables: {e}")
 
         tablas_excluded = ', '.join(f"'{table}'" for table in tables_to_exclude)
-        query = f"select TABLE_NAME from SYS.ALL_TABLES where OWNER = '{owner}' and TABLE_NAME not in ({tablas_excluded})  order by TABLE_NAME"
+
+        query = f"""
+        select distinct TABLE_NAME 
+        from SYS.ALL_TAB_COLS 
+        where OWNER = '{owner}'
+        and TABLE_NAME not in ({tablas_excluded})
+        AND TABLE_NAME NOT IN (
+            SELECT OBJECT_NAME 
+            FROM SYS.ALL_OBJECTS 
+            WHERE OWNER = '{owner}' 
+            AND OBJECT_TYPE = 'VIEW'
+        )
+        order by TABLE_NAME
+        """
         try:
             df = pd.read_sql(query, connection)
             for _, row in df.iterrows():
                 table_name = row['table_name']
-                all_tables[table_name] = {
-                    "name": table_name,
-                    "order": "",
-                    "field_owner": "",
-                    "index": "",
-                    "fields": {},  
-                    "data": pd.DataFrame()
-                }
-        except SQLAlchemyError as e:
-            print(f"Error retrieving tables: {e}")
 
-        for object_table, table_info in all_tables.items():
-            table_name = table_info['name']
-            query = f"""
-                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH
-                FROM SYS.ALL_TAB_COLS 
-                WHERE TABLE_NAME = '{table_name}' 
-                AND COLUMN_NAME NOT LIKE 'SYS\_%' ESCAPE '\\'
-                and COLUMN_NAME <> 'AUDIT'
-                ORDER BY COLUMN_ID
-            """
-            try:
-                df = pd.read_sql(query, connection)
-                fields_dict = {}
-                for _, row in df.iterrows():
-                    column_name = row['column_name']
-                    fields_dict[column_name] = {
-                        "data_type": row['data_type'],
-                        "data_length": row['data_length']
-                    }
-                all_tables[object_table]["fields"] = fields_dict
-            except SQLAlchemyError as e:
-                print(f"Error retrieving {object_table}: {e}")
-                all_tables[object_table]["fields"] = {}
+                # Call get_dbinfo_table to retrieve table information
+                table_info = get_dbinfo_table(connection_info, table_name, max_records_per_table=max_records_per_table)
+                
+                # Store the table info in the dictionary using table_name as the key
+                if table_info is not None:
+                    all_tables[table_name] = table_info[table_name]
 
-    # Now we use the information in the list of fields to retrieve all the information contained in the tables.
-        for object_table, table_info in all_tables.items():
-            table_name = table_info['name']
-            fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
-            query = f"select {fields} from {owner}.{table_name} FETCH FIRST {max_records_per_table} ROWS ONLY"
-            try:
-                df = pd.read_sql(query, connection)
-                cleaned_df = df.applymap(remove_illegal_chars)
-                all_tables[table_name]["data"] = cleaned_df 
-                num_rows = len(df)
+                num_rows = len(table_info[table_name]['data'])
                 total_records_retrieved += num_rows
                 if total_records_retrieved > total_records_limit:
                     print(f"Total records limit of {total_records_limit} reached working with {table_name}. Stopping further data retrieval.")
                     break
-            except SQLAlchemyError as e:
-                print(f"Error retrieving {catalog_table}: {e}")
-                all_tables[table_name]["data"] = pd.DataFrame()
+
+        except SQLAlchemyError as e:
+            print(f"Error retrieving tables: {e}")
 
         # Una vez que se alcanza el límite, eliminar las tablas sin datos del diccionario
         if total_records_retrieved >= total_records_limit:
@@ -768,7 +597,7 @@ def get_dbinfo_all_tables(connection_info: dict, total_records_limit: int = 5000
     return all_tables
 
 
-def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list):
+def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list, max_records_per_table: int = 50000):
     """
     Retrieves information about tables containing CLOB fields, excluding a predefined list of tables.
     For each table with a CLOB field, the function calls `get_dbinfo_table` to gather detailed table information.
@@ -823,10 +652,20 @@ def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list):
         tablas_excluded = ', '.join(f"'{table}'" for table in tables_to_exclude)
 
         # Query to retrieve tables with CLOB fields that are not in the exclusion list
-        query = f"select distinct TABLE_NAME from SYS.ALL_TAB_COLS where OWNER = '{owner}' " \
-                f" and TABLE_NAME not in ({tablas_excluded}) " \
-                f" and DATA_TYPE = 'CLOB'" \
-                f" order by TABLE_NAME"
+        query = f"""
+        select distinct TABLE_NAME 
+        from SYS.ALL_TAB_COLS 
+        where OWNER = '{owner}'
+        and TABLE_NAME not in ({tablas_excluded})
+        AND TABLE_NAME NOT IN (
+            SELECT OBJECT_NAME 
+            FROM SYS.ALL_OBJECTS 
+            WHERE OWNER = '{owner}' 
+            AND OBJECT_TYPE = 'VIEW'
+        )
+        and DATA_TYPE = 'CLOB'
+        order by TABLE_NAME
+        """
         try:
             df = pd.read_sql(query, connection)
             # For each table with CLOB fields, call `get_dbinfo_table` to get detailed information
@@ -834,7 +673,7 @@ def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list):
                 table_name = row['table_name']
 
                 # Call get_dbinfo_table to retrieve table information
-                table_info = get_dbinfo_table(connection_info, table_name)
+                table_info = get_dbinfo_table(connection_info, table_name, max_records_per_table=max_records_per_table)
                 
                 # Store the table info in the dictionary using table_name as the key
                 if table_info is not None:
@@ -846,7 +685,7 @@ def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list):
     return tables_with_clob
 
 
-def get_dbinfo_list_of_tables(tables: list, connection_info: dict):
+def get_dbinfo_list_of_tables(tables: list, connection_info: dict, max_records_per_table: int = 50000):
     """
     Retrieves detailed information for a list of tables from an Oracle database.
 
@@ -875,7 +714,7 @@ def get_dbinfo_list_of_tables(tables: list, connection_info: dict):
     for table in tables:
         table_name = table
         # Call get_dbinfo_table to retrieve table information
-        table_info = get_dbinfo_table(connection_info, table_name)
+        table_info = get_dbinfo_table(connection_info, table_name, max_records_per_table=max_records_per_table)
         
         # Store the table info in the dictionary using table_name as the key
         if table_info is not None:

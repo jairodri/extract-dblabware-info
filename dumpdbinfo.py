@@ -5,6 +5,7 @@ from openpyxl.styles import Font, PatternFill, colors
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.worksheet.hyperlink import Hyperlink
+from openpyxl.utils.exceptions import IllegalCharacterError
 from datetime import datetime, date
 import re
 
@@ -176,6 +177,22 @@ def format_header_cell(cell, font_size=11):
     cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
 
 
+def clean_value(value):
+    """
+    Cleans the value by replacing any illegal characters that cannot be written into an Excel sheet.
+    Replaces None or any illegal characters with a safe string or None.
+    """
+    # Verifica si el valor es nulo o no es una cadena
+    if value is None:
+        return ""
+
+    if isinstance(value, str):
+        # Reemplaza caracteres de control no válidos (valores ASCII < 32) excepto '\n' y '\t'
+        value = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F]', '', value)
+    
+    return value
+
+
 def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: str, include_record_count: bool = False, max_records_per_table: int = 50000, file_name: str = None):
     """
     Exports data from the provided dictionary to an Excel workbook, with each table's data in a separate sheet.
@@ -335,8 +352,11 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
                     else:
                         # Ensure the value is converted to a string if it's not a basic data type
                         cell_value = str(value) if not isinstance(value, (int, float, type(None))) else value
-
-                    cell = sheet.cell(row=r_idx, column=c_idx, value=cell_value)
+                    try:
+                        cell_value = clean_value(cell_value)
+                        cell = sheet.cell(row=r_idx, column=c_idx, value=cell_value)
+                    except IllegalCharacterError as ex:
+                        print(f'table with illegal character: {table_name}')
 
         
         # Auto-size columns 
