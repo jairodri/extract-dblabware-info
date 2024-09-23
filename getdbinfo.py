@@ -371,24 +371,30 @@ def get_dbinfo_metadata(connection_info: dict):
 
 def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = None, sql_query: str = None, max_records_per_table: int = 50000):
     """
-    Retrieve detailed information from the specified table in the Oracle database, including field names, types, 
-    lengths, and index information.
+    Retrieve detailed information from the specified table in the Oracle database, including field names, types,
+    lengths, indexes, and data, with an optional limit on the number of records retrieved.
 
     Parameters:
     -----------
     connection_info : dict
-        Dictionary containing Oracle database connection information (host, port, service_name, user, password, owner).
+        Dictionary containing Oracle database connection information, including host, port, service name, 
+        username, password, and owner.
     table_name : str
         The name of the table for which information will be retrieved.
     sql_filter : str, optional
-        Optional SQL filter to be applied to the query.
+        An optional SQL filter to be applied to the query for filtering rows from the table.
     sql_query : str, optional
-        Optional SQL query to execute instead of the default table information retrieval.
+        An optional custom SQL query to retrieve specific information. If provided, `table_name` and `fields_list` 
+        are extracted from this query.
+    max_records_per_table : int, optional, default=50000
+        The maximum number of records to retrieve from the table. This limit will be applied to the result set 
+        using a `FETCH FIRST N ROWS ONLY` clause.
 
     Returns:
     --------
     dict
-        A dictionary containing detailed information about the specified table, including fields, indexes, and data.
+        A dictionary containing detailed information about the specified table, including fields, indexes, and 
+        data. Returns None if an error occurs or no data is retrieved.
     """
     
     host = connection_info['host']
@@ -498,15 +504,19 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
 
             fields = ', '.join(f"{fld}" for fld in list(fields_dict.keys()))
             index = ', '.join(f"{fld}" for fld in index_list)
+            # Construct the basic SQL query to select fields from the specified table
             query = f"SELECT {fields} FROM {owner}.{table_name}"
-            query2 = f"ORDER BY {index}"
+            # Create the ORDER BY clause if there are any indexed fields
+            query2 = f"ORDER BY {index}" 
+            # Create the clause to limit the number of rows returned by the query
             query3 = f"FETCH FIRST {max_records_per_table} ROWS ONLY"
+            # If a SQL filter is provided, append it to the query
             if sql_filter is not None:
                 query = query + ' ' + sql_filter
-   
+            # If there are indexed fields, append the ORDER BY clause to the query
             if len(index_list) > 0:
                 query = query + ' ' + query2
-
+            # Finally, append the row limit clause to the query
             query = query + ' ' + query3 
         else:
             query = sql_query
@@ -522,7 +532,38 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
 
 
 def get_dbinfo_all_tables(connection_info: dict, tables_to_exclude: list, total_records_limit: int = 500000, max_records_per_table: int = 50000):
+    """
+    Retrieves metadata and data for all tables in an Oracle database, excluding specified tables and views, 
+    while respecting limits on the total number of records and the maximum number of records per table.
 
+    Parameters:
+    -----------
+    connection_info : dict
+        Dictionary containing Oracle database connection details (host, port, service_name, user, password, owner).
+    tables_to_exclude : list
+        List of table names to exclude from the data retrieval process.
+    total_records_limit : int, optional
+        The total number of records to retrieve across all tables. Once this limit is reached, the process will stop.
+        Defaults to 500,000 records.
+    max_records_per_table : int, optional
+        The maximum number of records to retrieve from a single table. This prevents retrieving too much data from any 
+        one table. Defaults to 50,000 records per table.
+
+    Returns:
+    --------
+    all_tables : dict
+        A dictionary where the keys are table names and the values are metadata and data from each table that was retrieved.
+        If no tables are retrieved or the connection fails, it returns None.
+    
+    Notes:
+    ------
+    - This function will exclude any tables specified in the `tables_to_exclude` parameter, as well as any tables 
+      containing 'AUDIT', 'CONFIG', or '_LOG' in their names.
+    - Views are excluded from the data retrieval process.
+    - If the total number of retrieved records exceeds `total_records_limit`, the function will stop retrieving data 
+      and return the tables that have been processed up to that point.
+    - Tables without data (empty) will be removed from the returned dictionary.
+    """
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
@@ -599,8 +640,9 @@ def get_dbinfo_all_tables(connection_info: dict, tables_to_exclude: list, total_
 
 def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list, max_records_per_table: int = 50000):
     """
-    Retrieves information about tables containing CLOB fields, excluding a predefined list of tables.
-    For each table with a CLOB field, the function calls `get_dbinfo_table` to gather detailed table information.
+    Retrieves information about tables containing CLOB fields, excluding a predefined list of tables. For each table 
+    with a CLOB field, the function calls `get_dbinfo_table` to gather detailed metadata and data, with a limit 
+    on the maximum number of records retrieved per table.
 
     Parameters:
     -----------
@@ -610,15 +652,19 @@ def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list, 
     
     tables_to_exclude : list
         A list of table names to be excluded from the query. This list can include tables loaded from the `.env`
-        file under the variable `TABLES_WITH_CLOB_TO_EXCLUDE` and other tables found via a query that match certain 
-        patterns (e.g., tables with 'AUDIT', 'CONFIG', or '_LOG' in the name).
+        file under the variable `TABLES_WITH_CLOB_TO_EXCLUDE`, as well as other tables found via a query that match 
+        certain patterns (e.g., tables with 'AUDIT', 'CONFIG', or '_LOG' in the name).
+    
+    max_records_per_table : int, optional
+        The maximum number of records to retrieve from each table with CLOB fields. This helps to limit the 
+        amount of data retrieved for large tables. Defaults to 50,000 records.
 
     Returns:
     --------
     tables_with_clob : dict
-        A dictionary where the keys are table names and the values are detailed metadata information about 
-        each table containing CLOB fields, returned from `get_dbinfo_table`. Returns None if the connection 
-        to the database fails.
+        A dictionary where the keys are table names and the values are detailed metadata information, including data 
+        for each table containing CLOB fields, retrieved via the `get_dbinfo_table` function. Returns None if the 
+        connection to the database fails.
     """
  
     host = connection_info['host']
@@ -689,9 +735,9 @@ def get_dbinfo_list_of_tables(tables: list, connection_info: dict, max_records_p
     """
     Retrieves detailed information for a list of tables from an Oracle database.
 
-    For each table in the provided list, the function calls `get_dbinfo_table` to gather metadata 
-    such as column names, data types, and other table properties. The results are stored in a dictionary 
-    with the table names as keys.
+    For each table in the provided list, the function calls `get_dbinfo_table` to gather metadata such as column 
+    names, data types, and other table properties, with a limit on the maximum number of records retrieved per table.
+    The results are stored in a dictionary with the table names as keys.
 
     Parameters:
     -----------
@@ -701,6 +747,10 @@ def get_dbinfo_list_of_tables(tables: list, connection_info: dict, max_records_p
     connection_info : dict
         Dictionary containing connection details for the Oracle database, including host, port, service name, 
         username, password, and owner.
+    
+    max_records_per_table : int, optional
+        The maximum number of records to retrieve from each table. This helps to limit the amount of data 
+        retrieved for large tables. Defaults to 50,000 records.
 
     Returns:
     --------
