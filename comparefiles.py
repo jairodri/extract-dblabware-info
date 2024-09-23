@@ -8,38 +8,44 @@ from dumpdbinfo import format_header_cell, adjust_column_widths
 
 def compare_files(file1, file2, output_file):
     """
-    Compara dos archivos de texto utilizando difflib y guarda las diferencias en un archivo de salida solo si hay diferencias.
-    
-    Parámetros:
-    - file1: Ruta al primer archivo a comparar.
-    - file2: Ruta al segundo archivo a comparar.
-    - output_file: Ruta al archivo de salida donde se guardarán las diferencias.
-    
-    Devuelve:
-    - int: Número de líneas con diferencias.
+    Compares two text files using difflib and saves the differences to an output file only if there are differences.
+
+    Parameters:
+    -----------
+    - file1 : str
+        Path to the first file to compare.
+    - file2 : str
+        Path to the second file to compare.
+    - output_file : str
+        Path to the output file where the differences will be saved.
+
+    Returns:
+    --------
+    int
+        The number of lines with differences.
     """
-    # Leer el contenido de los archivos
+    # Read the content of the files
     with open(file1, 'r') as f1:
         text1 = f1.readlines()
     
     with open(file2, 'r') as f2:
         text2 = f2.readlines()
     
-    # Usar difflib para generar las diferencias
+    # Use difflib to generate the differences
     diff = list(difflib.unified_diff(text1, text2, fromfile=file1, tofile=file2, n=0))
     
-    # Filtrar las líneas que no empiezan con '---', '+++' o '@@'
+    # Filter out lines that start with '---', '+++' or '@@'
     filtered_diff = [line for line in diff if not (line.startswith('---') or line.startswith('+++') or line.startswith('@@'))]
 
-    # Añadir un salto de línea al final de cada elemento de filtered_diff si no lo tiene, excepto el último elemento
-    for i in range(len(filtered_diff) - 1):  # Excluir el último elemento
+    # Add a newline character to the end of each element in filtered_diff if it doesn't already have one, except for the last element
+    for i in range(len(filtered_diff) - 1):  # Exclude the last element
         if not filtered_diff[i].endswith('\n'):
             filtered_diff[i] += '\n'
             
-    # Contar el número de líneas de diferencias
+    # Count the number of lines with differences
     diff_lines = len(filtered_diff)
 
-    # Solo guardar las diferencias si hay alguna
+    # Only save the differences if there are any
     if diff_lines > 0:
         with open(output_file, 'w') as output:
             output.writelines(filtered_diff)
@@ -49,42 +55,49 @@ def compare_files(file1, file2, output_file):
 
 def compare_folders_and_save_diffs(folder1, folder2, diff_folder):
     """
-    Compara los archivos de dos carpetas y guarda las diferencias en una tercera carpeta.
-    Devuelve un dataframe con el nombre del fichero de diferencias y el número de líneas con diferencias.
-    
-    Parámetros:
-    - folder1: Ruta a la primera carpeta.
-    - folder2: Ruta a la segunda carpeta.
-    - diff_folder: Ruta a la carpeta donde se guardarán los archivos de diferencias.
-    
-    Devuelve:
-    - pandas.DataFrame: Un dataframe con las columnas 'diff_file' y 'diff_lines'.
+    Compares the files in two folders and saves the differences in a third folder.
+    Returns a DataFrame with the name of the diff file and the number of lines with differences.
+
+    Parameters:
+    -----------
+    - folder1 : str
+        Path to the first folder.
+    - folder2 : str
+        Path to the second folder.
+    - diff_folder : str
+        Path to the folder where the diff files will be saved.
+
+    Returns:
+    --------
+    pandas.DataFrame
+        A DataFrame with columns 'file_name', 'diff_file', 'diff_lines', and 'file_exists'.
     """
-    # Crear la carpeta de diferencias si no existe
+
+    # Create the diff folder if it doesn't exist
     if not os.path.exists(diff_folder):
         os.makedirs(diff_folder)
     
-    # Obtener la lista de archivos de texto en la primera carpeta
+    # Get the list of text files in the first folder
     files1 = [f for f in os.listdir(folder1) if os.path.isfile(os.path.join(folder1, f))]
 
-    # Lista para almacenar los resultados de las diferencias
+    # List to store the diff results
     diffs_data = []
     
-    # Comparar cada archivo en la primera carpeta con el correspondiente en la segunda carpeta
+    # Compare each file in the first folder with the corresponding file in the second folder
     for file_name in files1:
         file1_path = os.path.join(folder1, file_name)
         file2_path = os.path.join(folder2, file_name)
 
-        # Verificar si el archivo también existe en la segunda carpeta
+        # Check if the file also exists in the second folder
         if os.path.exists(file2_path):
-            # Nombre del archivo de diferencias
+            # Name of the diff file
             diff_file_name = f"diff_{os.path.splitext(file_name)[0]}.txt"
             diff_file_path = os.path.join(diff_folder, diff_file_name)
             
-            # Llamar a la función de comparación y obtener el número de líneas con diferencias
+            # Call the comparison function and get the number of lines with differences
             diff_lines = compare_files(file1_path, file2_path, diff_file_path)
             
-            # Añadir al dataframe 
+            # Add the result to the DataFrame 
             if diff_lines > 0:
                 diffs_data.append({
                     'file_name': file_name,
@@ -107,7 +120,7 @@ def compare_folders_and_save_diffs(folder1, folder2, diff_folder):
                 'file_exists': False
             })
     
-    # Crear un dataframe con los resultados
+    # Create a DataFrame with the results
     diffs_df = pd.DataFrame(diffs_data, columns=['file_name', 'diff_file', 'diff_lines', 'file_exists'])
 
     return diffs_df
