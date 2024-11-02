@@ -3,6 +3,8 @@ from sqlalchemy.exc import SQLAlchemyError
 import pandas as pd
 import re
 import time
+import pprint
+import json
 
 
 def connect_to_oracle(host:str, port:int, service_name:str, username:str, password:str):
@@ -111,8 +113,10 @@ def extract_query_info(sql_query):
     Extracts the table name and a list of selected fields from a given SQL query.
 
     The function uses regular expressions to parse the SQL query and extract the table name
-    and the list of fields specified in the SELECT clause. If the table name includes a schema
-    (e.g., "schema_name.table_name"), it returns only the table name, ignoring the schema part.
+    and the list of fields specified in the SELECT clause. If a field includes an alias
+    (e.g., "alias.field_name"), it returns only the field name, ignoring the alias part.
+    Similarly, if the table name includes a schema (e.g., "schema_name.table_name"),
+    it returns only the table name, ignoring the schema.
 
     Args:
         sql_query (str): The SQL query from which to extract the table name and fields.
@@ -124,10 +128,10 @@ def extract_query_info(sql_query):
     Example:
         sql_query = '''
         SELECT 
-        sample_number,
-        sampled_date,
-        text_id,
-        status
+        alias.sample_number,
+        alias.sampled_date,
+        alias.text_id,
+        alias.status
         FROM SGLOWNER.SAMPLE 
         WHERE LOGIN_DATE >= '01/01/2024'
         '''
@@ -148,6 +152,9 @@ def extract_query_info(sql_query):
     # Extract the list of fields and clean up whitespace and new lines
     fields_str = fields_match.group(1)
     fields_list = [field.strip().upper() for field in fields_str.split(',')]
+
+    # Remove any aliases (text before the dot) from the field names
+    fields_list = [field.split('.')[-1] for field in fields_list]
 
     # Extract the full table name
     full_table_name = table_match.group(1).upper()
@@ -197,9 +204,9 @@ def get_dbinfo_metadata(connection_info: dict):
         {
             "tables": {
                 "name": "ALL_TABLES",
-                "order": "TABLE_NAME",
+                "order": "TABLE_name",
                 "field_owner": "OWNER",
-                "index": ["TABLE_NAME"],
+                "index": ["TABLE_name"],
                 "fields": { ... },  # Column metadata for tables
                 "data": pd.DataFrame()  # Data from ALL_TABLES
             },
@@ -297,7 +304,7 @@ def get_dbinfo_metadata(connection_info: dict):
     with engine.connect() as connection:
         for catalog_table, table_info in catalog_tables.items():
             table_name = table_info['name']
-            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_NAME = '{table_name}' order by COLUMN_ID"
+            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_name = '{table_name}' order by COLUMN_ID"
             try:
                 df = pd.read_sql(query, connection)
                 fields_dict = {}
@@ -316,11 +323,13 @@ def get_dbinfo_metadata(connection_info: dict):
     # We also use the predefined information about the owner of the tables and the order of retrieval of the query.
     # The retrieved information will be stored in the “data” key of the dictionary with the catalog tables.
         for catalog_table, table_info in catalog_tables.items():
+
             table_name = table_info['name']
             order = table_info['order']
             field_owner = table_info['field_owner']
             fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
             query = f"select {fields} from sys.{table_name} where {field_owner} = '{owner}' order by {order}"
+
             try:
                 df = pd.read_sql(query, connection)
                 catalog_tables[catalog_table]["data"] = df 
@@ -331,7 +340,7 @@ def get_dbinfo_metadata(connection_info: dict):
         # Define the generic fields that we want to extract from non-catalog tables.
         # These fields represent common metadata such as column name, data type, length, etc.
         generic_fields = {
-            'COLUMN_NAME': {'data_type': 'VARCHAR2', 'data_length': 128},
+            'COLUMN_name': {'data_type': 'VARCHAR2', 'data_length': 128},
             'DATA_TYPE': {'data_type': 'VARCHAR2', 'data_length': 128},
             'DATA_LENGTH': {'data_type': 'NUMBER', 'data_length': 22},
             'DATA_PRECISION': {'data_type': 'NUMBER', 'data_length': 22},
@@ -346,11 +355,11 @@ def get_dbinfo_metadata(connection_info: dict):
         for _, row in all_tables_df.iterrows():
             table_name = row['table_name']
             query = f"""
-                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, COLUMN_ID
+                SELECT COLUMN_name, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, COLUMN_ID
                 FROM SYS.ALL_TAB_COLS 
-                WHERE TABLE_NAME = '{table_name}' 
-                AND COLUMN_NAME NOT LIKE 'SYS\_%' ESCAPE '\\'
-                ORDER BY COLUMN_NAME
+                WHERE TABLE_name = '{table_name}' 
+                AND COLUMN_name NOT LIKE 'SYS\_%' ESCAPE '\\'
+                ORDER BY COLUMN_name
             """
             try:
                 df = pd.read_sql(query, connection)
@@ -435,22 +444,22 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
     with engine.connect() as connection:
         if sql_query is None:
             query = f"""
-                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH
+                SELECT COLUMN_name, DATA_TYPE, DATA_LENGTH
                 FROM SYS.ALL_TAB_COLS 
-                WHERE TABLE_NAME = '{table_name}' 
-                AND COLUMN_NAME NOT LIKE 'SYS\_%' ESCAPE '\\'
-                AND COLUMN_NAME <> 'AUDIT'
+                WHERE TABLE_name = '{table_name}' 
+                AND COLUMN_name NOT LIKE 'SYS\_%' ESCAPE '\\'
+                AND COLUMN_name NOT LIKE 'AUDIT%'
                 ORDER BY COLUMN_ID
             """
         else:
             # Convertimos la lista de campos a una cadena compatible con SQL ('field1', 'field2', ...)
             fields_string = ', '.join(f"'{field}'" for field in fields_list)
             query = f"""
-                SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH 
+                SELECT COLUMN_name, DATA_TYPE, DATA_LENGTH 
                 FROM SYS.ALL_TAB_COLS 
-                WHERE TABLE_NAME = '{table_name}' 
-                AND COLUMN_NAME IN ({fields_string})
-                AND COLUMN_NAME NOT LIKE 'SYS\_%' ESCAPE '\\' 
+                WHERE TABLE_name = '{table_name}' 
+                AND COLUMN_name IN ({fields_string})
+                AND COLUMN_name NOT LIKE 'SYS\_%' ESCAPE '\\' 
                 ORDER BY COLUMN_ID
                 """
 
@@ -481,10 +490,11 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
             search_condition_column = "SEARCH_CONDITION_VC" if is_version_12c_or_higher else "SEARCH_CONDITION"
 
             # Retrieve the unique index and its fields if it exists
+            #                 ORDER BY TO_CHAR({search_condition_column})
             query = f"""
                 SELECT {search_condition_column} 
                 FROM SYS.ALL_CONSTRAINTS s 
-                WHERE s.TABLE_NAME = '{table_name}' 
+                WHERE s.TABLE_name = '{table_name}' 
                 AND s.CONSTRAINT_TYPE = 'C'
             """
             try:
@@ -497,7 +507,11 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
                         if match:
                             field_name = match.group(1)  # Extract the field name without the quotes
                             index_list.append(field_name)
+                            
+                    # ordenamos la lista
+                    index_list.sort()
                     table_dict[table_name]["index"] = index_list
+
             except SQLAlchemyError as e:
                 print(f"Error retrieving index of {table_name}: {e}")
                 table_dict[table_name]["index"] = []
@@ -517,7 +531,10 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
             if len(index_list) > 0:
                 query = query + ' ' + query2
             # Finally, append the row limit clause to the query
-            query = query + ' ' + query3 
+            if is_version_12c_or_higher:
+                query = query + ' ' + query3 
+            else:
+                query = f"SELECT * FROM ({query}) WHERE ROWNUM <= {max_records_per_table}"
         else:
             query = sql_query
 
@@ -582,10 +599,10 @@ def get_dbinfo_all_tables(connection_info: dict, tables_to_exclude: list, total_
 
         # Query to find tables with 'AUDIT', 'CONFIG' or '_LOG' in the name
         query = f"""
-        SELECT TABLE_NAME 
+        SELECT TABLE_name 
         FROM SYS.ALL_TABLES 
         WHERE OWNER = '{owner}' 
-        AND (TABLE_NAME LIKE '%AUDIT%' OR TABLE_NAME LIKE '%CONFIG%' OR TABLE_NAME LIKE '%\_LOG' ESCAPE '\\')
+        AND (TABLE_name LIKE '%AUDIT%' OR TABLE_name LIKE '%CONFIG%' OR TABLE_name LIKE '%\_LOG' ESCAPE '\\')
         """
         try:
             df = pd.read_sql(query, connection)
@@ -596,17 +613,17 @@ def get_dbinfo_all_tables(connection_info: dict, tables_to_exclude: list, total_
         tablas_excluded = ', '.join(f"'{table}'" for table in tables_to_exclude)
 
         query = f"""
-        select distinct TABLE_NAME 
+        select distinct TABLE_name 
         from SYS.ALL_TAB_COLS 
         where OWNER = '{owner}'
-        and TABLE_NAME not in ({tablas_excluded})
-        AND TABLE_NAME NOT IN (
-            SELECT OBJECT_NAME 
+        and TABLE_name not in ({tablas_excluded})
+        AND TABLE_name NOT IN (
+            SELECT OBJECT_name 
             FROM SYS.ALL_OBJECTS 
             WHERE OWNER = '{owner}' 
             AND OBJECT_TYPE = 'VIEW'
         )
-        order by TABLE_NAME
+        order by TABLE_name
         """
         try:
             df = pd.read_sql(query, connection)
@@ -683,10 +700,10 @@ def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list, 
     with engine.connect() as connection:
         # Query to find tables with 'AUDIT', 'CONFIG' or '_LOG' in the name
         query = f"""
-        SELECT TABLE_NAME 
+        SELECT TABLE_name 
         FROM SYS.ALL_TABLES 
         WHERE OWNER = '{owner}' 
-        AND (TABLE_NAME LIKE '%AUDIT%' OR TABLE_NAME LIKE '%CONFIG%' OR TABLE_NAME LIKE '%\_LOG' ESCAPE '\\')
+        AND (TABLE_name LIKE '%AUDIT%' OR TABLE_name LIKE '%CONFIG%' OR TABLE_name LIKE '%\_LOG' ESCAPE '\\')
         """
         try:
             df = pd.read_sql(query, connection)
@@ -699,18 +716,18 @@ def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list, 
 
         # Query to retrieve tables with CLOB fields that are not in the exclusion list
         query = f"""
-        select distinct TABLE_NAME 
+        select distinct TABLE_name 
         from SYS.ALL_TAB_COLS 
         where OWNER = '{owner}'
-        and TABLE_NAME not in ({tablas_excluded})
-        AND TABLE_NAME NOT IN (
-            SELECT OBJECT_NAME 
+        and TABLE_name not in ({tablas_excluded})
+        AND TABLE_name NOT IN (
+            SELECT OBJECT_name 
             FROM SYS.ALL_OBJECTS 
             WHERE OWNER = '{owner}' 
             AND OBJECT_TYPE = 'VIEW'
         )
         and DATA_TYPE = 'CLOB'
-        order by TABLE_NAME
+        order by TABLE_name
         """
         try:
             df = pd.read_sql(query, connection)
@@ -771,3 +788,5 @@ def get_dbinfo_list_of_tables(tables: list, connection_info: dict, max_records_p
             info_tables[table_name] = table_info[table_name]
 
     return info_tables
+
+    

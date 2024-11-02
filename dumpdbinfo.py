@@ -319,6 +319,9 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
                     if data_types[c_idx-1] == 'LONG' or data_types[c_idx-1] == 'CLOB':
                         # Handle CLOB data by writing it to a text file
                         if pd.notna(value):
+                            if index_list is None:
+                                print(table_name)
+
                             # Construir la parte final del nombre del archivo usando los valores de las columnas en index_list
                             index_values = [str(sheet.cell(row=r_idx, column=column_names.index(index_col)+1).value) for index_col in index_list]
                             index_part = "_".join(index_values)
