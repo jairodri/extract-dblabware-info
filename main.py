@@ -18,7 +18,7 @@ def load_grouped_vars(prefix):
 load_dotenv()
 
 # Get the database connections params
-connection_info = load_grouped_vars('PRE_PET_V8_')
+connection_info = load_grouped_vars('PRE_COR_V8_')
 
 # Get the directory where the output files will be saved
 output_dir_metadata = os.getenv('OUTPUT_DIR_METADATA')

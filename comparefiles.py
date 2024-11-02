@@ -2,9 +2,10 @@ import os
 import difflib
 import pandas as pd
 from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 import re
-from dumpdbinfo import format_header_cell, adjust_column_widths
 from datetime import datetime
+from utils import adjust_column_widths, format_header_cell
 
 
 def compare_text_files(file1, file2, output_file):
@@ -129,75 +130,74 @@ def compare_folders_and_save_diffs(folder1, folder2, diff_folder):
 
 def generate_excel_from_diffs(folder1, folder2, diff_folder):
     """
-    Genera un archivo Excel con las diferencias encontradas entre los archivos de dos carpetas.
-    
-    Parámetros:
-    - folder1: Ruta a la primera carpeta.
-    - folder2: Ruta a la segunda carpeta.
-    - diff_folder: Ruta a la carpeta donde se guardarán los archivos de diferencias y el archivo Excel.
-    
-    El archivo Excel se guarda en 'diff_folder' con el nombre 'diff.xlsx'.
+    Generates an Excel file with the differences found between the files in two folders.
+
+    Parameters:
+    - folder1: Path to the first folder.
+    - folder2: Path to the second folder.
+    - diff_folder: Path to the folder where the difference files and Excel file will be saved.
+
+    The Excel file is saved in 'diff_folder' with the name 'diff.xlsx'.
     """
-    # Llama a la función para comparar las carpetas y obtener el dataframe
+    # Call the function to compare the folders and get the DataFrame with differences
     diffs_df = compare_folders_and_save_diffs(folder1, folder2, diff_folder)
     
-    # Solo procedemos si hay diferencias
+    # Proceed only if there are differences
     if not diffs_df.empty:
-        # Crear un nuevo Workbook
+        # Create a new Workbook
         wb = Workbook()
         ws = wb.active
         ws.title = "Differences"
 
-        # Escribir la cabecera en el archivo Excel
+        # Write the header in the Excel file
         header = ['table_name', 'file_name', 'diff_file', 'diff_lines', 'file_exists']
         ws.append(header)
 
-        # Formatear las celdas de cabecera
+        # Format the header cells
         for col_num, column_title in enumerate(header, start=1):
             cell = ws.cell(row=1, column=col_num)
-            format_header_cell(cell)  # Formatear la celda de cabecera
+            format_header_cell(cell)  # Format the header cell
         
-        # Iterar a través del DataFrame y extraer la información
+        # Iterate through the DataFrame and extract the information
         for index, row in diffs_df.iterrows():
             file = row['file_name']
             diff_file = row['diff_file']
             diff_lines = row['diff_lines']
             file_exists = row['file_exists']
             
-            # Obtener el nombre de la tabla desde el nombre del fichero
+            # Get the table name from the file name
             # table_name_match = re.search(r"diff_(.+?)__", diff_file)
             table_name_match = re.match(r"(.+?)__", file)
             table_name = table_name_match.group(1) if table_name_match else "Unknown"
 
-            # Obtener solo el nombre del archivo para mostrar
+            # Get only the file name for display
             file_name = os.path.basename(diff_file)
 
-            # Escribir la fila en el archivo Excel
+            # Write the row in the Excel file
             ws.append([table_name, file, diff_file, diff_lines, file_exists])
 
-            # Configurar el hipervínculo en la celda 'diff_file'
-            diff_file_cell = ws.cell(row=index + 2, column=3, value=file_name)  # +2 debido a la cabecera y la base 1 de openpyxl
-            diff_file_cell.hyperlink = diff_file  # Establecer el hipervínculo a la ruta completa del archivo
-            diff_file_cell.style = "Hyperlink"  # Estilo de hipervínculo para visualización
+            # Set hyperlink in the 'diff_file' cell
+            diff_file_cell = ws.cell(row=index + 2, column=3, value=file_name)  # +2 due to header and 1-based indexing of openpyxl
+            diff_file_cell.hyperlink = diff_file  # Set the hyperlink to the full file path
+            diff_file_cell.style = "Hyperlink"  # Apply hyperlink style for display
 
-
-        # Inmovilizar la primera fila (cabecera)
+        # Freeze the first row (header)
         ws.freeze_panes = ws['A2']        
         
         # Auto-size columns 
         adjust_column_widths(ws)
 
-        # Aplicar autofiltro a todas las columnas
+        # Apply auto-filter to all columns
         ws.auto_filter.ref = ws.dimensions
 
-        # Guardar el archivo Excel en la carpeta diff_folder
+        # Save the Excel file in the diff_folder
         excel_path = os.path.join(diff_folder, 'diff.xlsx')
         wb.save(excel_path)
 
 
 def compare_excel_dbinfo_files(file1, file2, output_file):
     """
-    Compare two Excel files generated from get-dbinfo-metadata to find differences
+    Compares two Excel files generated with get_dbinfo_metadata to find differences
     in column details for each table listed in the ALL_TABLES sheet. Saves the differences
     in a new Excel file with an additional column containing SQL statements to resolve
     the differences.
@@ -208,7 +208,7 @@ def compare_excel_dbinfo_files(file1, file2, output_file):
         output_file (str): Path to the Excel file where differences will be saved.
 
     Returns:
-        pd.DataFrame: A DataFrame containing the differences with columns:
+        pd.DataFrame: A DataFrame with the differences and columns:
                       'table_name', 'column_name', 'difference', and 'resolution_sql'.
     """
     # Load Excel files
@@ -219,7 +219,7 @@ def compare_excel_dbinfo_files(file1, file2, output_file):
     all_tables1 = pd.read_excel(excel1, sheet_name="ALL_TABLES")
     all_tables2 = pd.read_excel(excel2, sheet_name="ALL_TABLES")
     
-    # Get the list of table names in each Excel file
+    # Get lists of table names in each file
     tables1 = set(all_tables1['table_name'].dropna().unique())
     tables2 = set(all_tables2['table_name'].dropna().unique())
     
@@ -228,23 +228,20 @@ def compare_excel_dbinfo_files(file1, file2, output_file):
     tables_only_in_file1 = tables1 - tables2
     tables_only_in_file2 = tables2 - tables1
     
-    # Initialize list to store differences
+    # List to store differences
     differences = []
     
     # Compare common tables
     for table_name in common_tables:
-        # Load the table sheet from both Excel files
         df1 = pd.read_excel(excel1, sheet_name=table_name)
         df2 = pd.read_excel(excel2, sheet_name=table_name)
         
-        # Compare the specific columns: column_name, data_type, data_length
+        # Compare specific columns: column_name, data_type, data_length
         for _, row1 in df1.iterrows():
             column_name = row1['column_name']
-            # Find the matching row in the second dataframe based on column_name
             row2 = df2[df2['column_name'] == column_name]
             
             if row2.empty:
-                # Column is missing in the second file
                 differences.append({
                     'table_name': table_name,
                     'column_name': column_name,
@@ -253,7 +250,7 @@ def compare_excel_dbinfo_files(file1, file2, output_file):
                 })
                 continue
             
-            row2 = row2.iloc[0]  # There should be only one matching row
+            row2 = row2.iloc[0]
             
             # Compare data_type
             if row1['data_type'] != row2['data_type']:
@@ -273,7 +270,7 @@ def compare_excel_dbinfo_files(file1, file2, output_file):
                     'resolution_sql': f"ALTER TABLE SGLOWNER.{table_name} MODIFY {column_name} {row1['data_type']}({row1['data_length']});"
                 })
 
-        # Check for columns in df2 that are not in df1
+        # Check columns in df2 that are not in df1
         for _, row2 in df2.iterrows():
             column_name = row2['column_name']
             if column_name not in df1['column_name'].values:
@@ -284,7 +281,7 @@ def compare_excel_dbinfo_files(file1, file2, output_file):
                     'resolution_sql': f"ALTER TABLE SGLOWNER.{table_name} ADD {column_name} {row2['data_type']}({row2['data_length']});"
                 })
 
-    # Add entries for tables only present in one of the files
+    # Add entries for tables present only in one file
     for table_name in tables_only_in_file1:
         differences.append({
             'table_name': table_name,
@@ -304,11 +301,65 @@ def compare_excel_dbinfo_files(file1, file2, output_file):
     # Convert the differences list to a DataFrame
     differences_df = pd.DataFrame(differences, columns=['table_name', 'column_name', 'difference', 'resolution_sql'])
     
-    # Save the differences DataFrame to the specified output Excel file
-    with pd.ExcelWriter(output_file) as writer:
+    # Create an Excel file with the appropriate format
+    with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
         differences_df.to_excel(writer, sheet_name="Differences", index=False)
-    
+        wb = writer.book
+        ws = wb["Differences"]
+        
+        # Freeze the first row (header)
+        ws.freeze_panes = 'A2'  
+
+        # Format the header
+        for cell in ws[1]:
+            format_header_cell(cell)
+        
+        # Adjust column widths
+        adjust_column_widths(ws)
+
+        # Apply a filter to all columns
+        ws.auto_filter.ref = ws.dimensions
+
     return differences_df
+
+
+def get_folder_files_info(folder_path, file_extension=None):
+    """
+    Generates a DataFrame with information about files in a specified folder,
+    optionally filtering by file extension.
+
+    Args:
+        folder_path (str): The path to the folder where files will be listed.
+        file_extension (str, optional): The extension of the files to search for. If None, all files are listed.
+
+    Returns:
+        pd.DataFrame: A DataFrame with columns 'file_name', 'modification_date', and 'file_size' for each file.
+    """
+    # Initialize list to store file information
+    files_data = []
+
+    # Iterate over files in the folder
+    for file_name in os.listdir(folder_path):
+        # Full path of the file
+        file_path = os.path.join(folder_path, file_name)
+        
+        # Check if it's a file and if it matches the extension (if provided)
+        if os.path.isfile(file_path) and (file_extension is None or file_name.endswith(file_extension)):
+            # Get file details
+            modification_date = datetime.fromtimestamp(os.path.getmtime(file_path))
+            file_size = os.path.getsize(file_path)
+            
+            # Append file info to the list
+            files_data.append({
+                'file_name': file_name,
+                'modification_date': modification_date,
+                'file_size': file_size
+            })
+
+    # Create DataFrame from the list
+    files_df = pd.DataFrame(files_data, columns=['file_name', 'modification_date', 'file_size'])
+    
+    return files_df
 
 
 def get_folder_files_info(folder_path, file_extension=None):
@@ -352,29 +403,29 @@ def get_folder_files_info(folder_path, file_extension=None):
 
 def compare_file_info(df1, df2, output_folder):
     """
-    Compare two DataFrames containing file information and extract differences.
-    Save the differences in an Excel file in the specified output folder.
+    Compares two DataFrames containing file information and extracts differences.
+    Saves the differences in an Excel file in the specified folder.
 
     Args:
-        df1 (pd.DataFrame): First DataFrame containing file information.
-        df2 (pd.DataFrame): Second DataFrame containing file information.
+        df1 (pd.DataFrame): First DataFrame with file information.
+        df2 (pd.DataFrame): Second DataFrame with file information.
         output_folder (str): Folder where the Excel file with differences will be saved.
 
     Returns:
-        pd.DataFrame: A DataFrame containing the differences with columns:
+        pd.DataFrame: A DataFrame with differences and columns:
                       'file_name', 'difference_type', 'modification_date_df1', 
                       'modification_date_df2', 'file_size_df1', 'file_size_df2'.
     """
-    # Ensure output folder exists
+    # Ensure the output folder exists
     os.makedirs(output_folder, exist_ok=True)
     
-    # Find unique and common files by merging dataframes on file_name
+    # Find unique and common files by merging on file_name
     merged_df = df1.merge(df2, on='file_name', how='outer', suffixes=('_df1', '_df2'), indicator=True)
 
-    # Initialize list to store differences
+    # List to store differences
     differences = []
 
-    # Iterate over merged DataFrame to identify differences
+    # Identify differences in the merged DataFrame
     for _, row in merged_df.iterrows():
         file_name = row['file_name']
         
@@ -399,7 +450,7 @@ def compare_file_info(df1, df2, output_folder):
                 'file_size_df2': row['file_size_df2']
             })
         else:
-            # File in both DataFrames, check for differences in modification date and file size
+            # File in both DataFrames; check for modification date and size differences
             date_diff = row['modification_date_df1'] != row['modification_date_df2']
             size_diff = row['file_size_df1'] != row['file_size_df2']
             
@@ -425,12 +476,29 @@ def compare_file_info(df1, df2, output_folder):
         'modification_date_df2', 'file_size_df1', 'file_size_df2'
     ])
 
-    # Save differences to an Excel file in the output folder
+    # Save the differences in an Excel file in the output folder
     output_file_path = os.path.join(output_folder, "file_differences.xlsx")
-    with pd.ExcelWriter(output_file_path) as writer:
+    with pd.ExcelWriter(output_file_path, engine='openpyxl') as writer:
         differences_df.to_excel(writer, sheet_name="Differences", index=False)
-    
+        wb = writer.book
+        ws = wb["Differences"]
+
+        # Freeze first row (header)
+        ws.freeze_panes = 'A2'  
+
+        # Format the header
+        for cell in ws[1]:
+            format_header_cell(cell)
+        
+        # Adjust column widths
+        adjust_column_widths(ws)
+
+        # Apply a filter to all columns
+        ws.auto_filter.ref = ws.dimensions
+
     return differences_df
+
+
 
 
 
