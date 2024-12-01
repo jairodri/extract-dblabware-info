@@ -4,6 +4,7 @@ import pandas as pd
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 import re
+import shutil
 from datetime import datetime
 from utils import adjust_column_widths, format_header_cell
 
@@ -75,9 +76,14 @@ def compare_folders_and_save_diffs(folder1, folder2, diff_folder):
         A DataFrame with columns 'file_name', 'diff_file', 'diff_lines', and 'file_exists'.
     """
 
+    # Delete the output directory if it exists
+    if os.path.exists(diff_folder):
+        shutil.rmtree(diff_folder)
+
     # Create the diff folder if it doesn't exist
     if not os.path.exists(diff_folder):
         os.makedirs(diff_folder)
+    print(f"Created output directory: {diff_folder}")
     
     # Get the list of text files in the first folder
     files1 = [f for f in os.listdir(folder1) if os.path.isfile(os.path.join(folder1, f))]
@@ -139,6 +145,7 @@ def generate_excel_from_diffs(folder1, folder2, diff_folder):
 
     The Excel file is saved in 'diff_folder' with the name 'diff.xlsx'.
     """
+    print(f'Generating Excel file with differences between files \nin {folder1} \nand {folder2}...')
     # Call the function to compare the folders and get the DataFrame with differences
     diffs_df = compare_folders_and_save_diffs(folder1, folder2, diff_folder)
     

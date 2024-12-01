@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.exc import SQLAlchemyError
+import cx_Oracle
 import pandas as pd
 import re
 import time
@@ -235,13 +236,14 @@ def get_dbinfo_metadata(connection_info: dict):
       an error message and populating the corresponding dictionary keys with empty values.
     - The function uses SQLAlchemy to manage database connections and execute SQL queries.
     """
-    
+
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
     username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
+    print(f'Extracting metadata from Oracle database {service_name}...')
     engine = connect_to_oracle(host, port, service_name, username, password)
 
     if engine is None:
@@ -405,7 +407,7 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
         A dictionary containing detailed information about the specified table, including fields, indexes, and 
         data. Returns None if an error occurs or no data is retrieved.
     """
-    
+    print(f'Extracting data from Oracle table {table_name}...')
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
@@ -527,6 +529,7 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
             # If a SQL filter is provided, append it to the query
             if sql_filter is not None:
                 query = query + ' ' + sql_filter
+                print(f'Query with added filter: {query}')
             # If there are indexed fields, append the ORDER BY clause to the query
             if len(index_list) > 0:
                 query = query + ' ' + query2
@@ -537,6 +540,7 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
                 query = f"SELECT * FROM ({query}) WHERE ROWNUM <= {max_records_per_table}"
         else:
             query = sql_query
+            print(f'Custom query: {query}')
 
         try:
             df = pd.read_sql(query, connection)
@@ -581,12 +585,15 @@ def get_dbinfo_all_tables(connection_info: dict, tables_to_exclude: list, total_
       and return the tables that have been processed up to that point.
     - Tables without data (empty) will be removed from the returned dictionary.
     """
+
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
     username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
+    print(f'Extracting data from all tables in Oracle database {service_name}...')
+
     engine = connect_to_oracle(host, port, service_name, username, password)
 
     if engine is None:
@@ -683,13 +690,15 @@ def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list, 
         for each table containing CLOB fields, retrieved via the `get_dbinfo_table` function. Returns None if the 
         connection to the database fails.
     """
- 
+
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
     username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
+    print(f'Extracting data from all tables with clob fields in Oracle database {service_name}...')
+
     engine = connect_to_oracle(host, port, service_name, username, password)
 
     if engine is None:
@@ -776,6 +785,7 @@ def get_dbinfo_list_of_tables(tables: list, connection_info: dict, max_records_p
         about each table, as returned by `get_dbinfo_table`. If a table's information cannot be retrieved, 
         it is excluded from the result.
     """
+    print(f"Extracting data from a list of tables in Oracle database {connection_info['service_name']}...")
     info_tables = {}
 
     for table in tables:

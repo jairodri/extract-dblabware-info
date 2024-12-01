@@ -8,6 +8,7 @@ from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.utils.exceptions import IllegalCharacterError
 from datetime import datetime, date
 import re
+import shutil
 from utils import adjust_column_widths, format_header_cell
 
 
@@ -43,13 +44,18 @@ def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str,
     --------
     None
     """
-
+    print('Dumping info to CSV...')
     # Ensure the output directory includes a subdirectory named after the service
     if not output_dir.endswith(folder_name):
         output_dir = os.path.join(output_dir, folder_name)
 
+    # Delete the output directory if it exists
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+
     # Create the output directory if it does not exist
     os.makedirs(output_dir, exist_ok=True)
+    print(f"Created output directory: {output_dir}")
 
     # Iterate over each table name and its corresponding DataFrame in the dictionary
     for item, item_data in table_dataframes.items():
@@ -187,12 +193,18 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
       and the cell in Excel contains a hyperlink to these files, allowing easy access to large text data.
     - The `file_name` parameter allows specifying the name of the generated Excel file; otherwise, it defaults to the `folder_name`.
     """
-
+    print('Dumping info to Excel...')
     # Ensure the output directory includes the database name
     if not output_dir.endswith(folder_name):
         output_dir = os.path.join(output_dir, folder_name)
-    # Ensure the output directory exists
+
+    # Delete the output directory if it exists
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+
+    # Create the output directory if it does not exist
     os.makedirs(output_dir, exist_ok=True)
+    print(f"Created output directory: {output_dir}")
 
     # Define the path for the CLOB subdirectory
     clob_subdir = os.path.join(output_dir, 'CLOB')
