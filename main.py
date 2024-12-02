@@ -1,9 +1,10 @@
 import os
 import re
+import sys
 from dotenv import load_dotenv
-from getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob, get_dbinfo_list_of_tables
-from dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
-from comparefiles import generate_excel_from_diffs, compare_excel_dbinfo_files, get_folder_files_info, compare_file_info
+from modules.getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob, get_dbinfo_list_of_tables
+from modules.dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
+from modules.comparefiles import generate_excel_from_diffs, compare_excel_dbinfo_files, get_folder_files_info, compare_file_info
 
 
 def load_grouped_vars_by_pattern():
@@ -54,8 +55,13 @@ def load_grouped_vars(prefix):
             grouped_vars[key[len(prefix):].lower()] = value
     return grouped_vars
 
+# Agregar el directorio base al path de Python
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Ruta al archivo .env dentro de la carpeta resources
+dotenv_path = os.path.join(os.path.dirname(__file__), 'resources', '.env')
 # Load variables from the .env file
-load_dotenv()
+load_dotenv(dotenv_path)
 
 # Get the database connections params
 connection_info = load_grouped_vars('DES_COR_V8_')
@@ -74,6 +80,15 @@ sql_query = sql_query if sql_query else None
 sql_filter = os.getenv('SQL_FILTER')
 # if sql_filter is empty, set it to None
 sql_filter = sql_filter if sql_filter else None
+
+# Get the limits for the number of records to extract per table
+max_records_per_table = int(os.getenv('MAX_RECORDS_PER_TABLE', 1000))
+
+# Get the limits for the number total of records to extract
+total_records_limit = int(os.getenv('TOTAL_RECORDS_LIMIT', 300000))
+
+# Get the separator for the csv files
+csv_separator = os.getenv('CSV_SEPARATOR', '|')
 
 # Convert environment variable from string to list
 tables_with_clob_to_exclude = os.getenv('TABLES_WITH_CLOB_TO_EXCLUDE', '').split(',')
@@ -156,31 +171,31 @@ def main():
             if output_format == 'excel':
                 dump_dbinfo_to_excel(connection_info['service_name'], db_info_catalog, output_dir_metadata)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], db_info_catalog, output_dir_metadata, sep='|')
+                dump_dbinfo_to_csv(connection_info['service_name'], db_info_catalog, output_dir_metadata, sep=csv_separator)
         elif option == 2:
-            db_info_table = get_dbinfo_table(connection_info, table_name, sql_filter=sql_filter, sql_query=sql_query, max_records_per_table=50000)
+            db_info_table = get_dbinfo_table(connection_info, table_name, sql_filter=sql_filter, sql_query=sql_query, max_records_per_table=max_records_per_table)
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], db_info_table, output_dir_data, include_record_count=True, max_records_per_table=50000, file_name=table_name)
+                dump_dbinfo_to_excel(connection_info['service_name'], db_info_table, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table, file_name=table_name)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep='|', suffix=None)
+                dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep=csv_separator, suffix=None)
         elif option == 3:
-            db_info_all_tables = get_dbinfo_all_tables(connection_info, tables_to_exclude, total_records_limit=300000, max_records_per_table=1000)
+            db_info_all_tables = get_dbinfo_all_tables(connection_info, tables_to_exclude, total_records_limit=total_records_limit, max_records_per_table=max_records_per_table)
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], db_info_all_tables, output_dir_data, include_record_count=True, max_records_per_table=10000)
+                dump_dbinfo_to_excel(connection_info['service_name'], db_info_all_tables, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], db_info_all_tables, output_dir_data, sep='|') 
+                dump_dbinfo_to_csv(connection_info['service_name'], db_info_all_tables, output_dir_data, sep=csv_separator) 
         elif option == 4:
             tables_with_clob = get_dbinfo_tables_with_clob(connection_info, tables_with_clob_to_exclude)
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=50000)
+                dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep='|')    
+                dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep=csv_separator)    
         elif option == 5:
             info_tables = get_dbinfo_list_of_tables(table_list, connection_info)
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], info_tables, output_dir_data, include_record_count=True, max_records_per_table=20000)
+                dump_dbinfo_to_excel(connection_info['service_name'], info_tables, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], info_tables, output_dir_data, sep='|') 
+                dump_dbinfo_to_csv(connection_info['service_name'], info_tables, output_dir_data, sep=csv_separator) 
     elif option == 6:
         # Opción 6 no requiere conexión a base de datos
         generate_excel_from_diffs(folder_in1, folder_in2, folder_out)

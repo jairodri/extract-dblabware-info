@@ -9,7 +9,7 @@ from openpyxl.utils.exceptions import IllegalCharacterError
 from datetime import datetime, date
 import re
 import shutil
-from utils import adjust_column_widths, format_header_cell
+from modules.utils import adjust_column_widths, format_header_cell
 
 
 def dump_dbinfo_to_csv(folder_name:str, table_dataframes: dict, output_dir: str, sep: str=',', suffix: str = None):

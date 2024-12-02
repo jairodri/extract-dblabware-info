@@ -6,7 +6,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 import re
 import shutil
 from datetime import datetime
-from utils import adjust_column_widths, format_header_cell
+from modules.utils import adjust_column_widths, format_header_cell
 
 
 def compare_text_files(file1, file2, output_file):
