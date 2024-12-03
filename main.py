@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from modules.getdbinfo import get_dbinfo_metadata, get_dbinfo_table, get_dbinfo_all_tables, get_dbinfo_tables_with_clob, get_dbinfo_list_of_tables
 from modules.dumpdbinfo import dump_dbinfo_to_csv, dump_dbinfo_to_excel
@@ -59,9 +60,11 @@ def load_grouped_vars(prefix):
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Ruta al archivo .env dentro de la carpeta resources
-dotenv_path = os.path.join(os.path.dirname(__file__), 'resources', '.env')
+# dotenv_path = os.path.join(os.path.dirname(__file__), 'resources', '.env')
+env_path = Path(__file__).parent / "resources" / ".env"
+
 # Load variables from the .env file
-load_dotenv(dotenv_path)
+load_dotenv(env_path)
 
 # Get the database connections params
 connection_info = load_grouped_vars('DES_COR_V8_')
