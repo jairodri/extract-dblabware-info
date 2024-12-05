@@ -128,8 +128,9 @@ def main():
     print("3 - Get data from all tables and dump them to csv/excel file")
     print("4 - Get data from tables with clob fields and dump to csv/excel file")
     print("5 - Get data from a list of tables and dump to csv/excel file")
-    print("6 - Compare files and generate excel with differences")
-    
+    print("6 - Compare text files and generate excel with differences")
+    print("7 - Compare excel files and generate excel with differences")
+    print("8 - Compare files in folder by their type and generate excel with differences")
     try:
         option = int(input("\nEnter the option number: "))
     except ValueError:
@@ -200,20 +201,17 @@ def main():
             else:
                 dump_dbinfo_to_csv(connection_info['service_name'], info_tables, output_dir_data, sep=csv_separator) 
     elif option == 6:
-        # Opción 6 no requiere conexión a base de datos
         generate_excel_from_diffs(folder_in1, folder_in2, folder_out)
+    elif option == 7:
+        differences = compare_excel_dbinfo_files(file_excel1, file_excel2, file_excel_out)
+    elif option == 8:
+        df1 = get_folder_files_info(server_folder_in1, 'sll')
+        df2 = get_folder_files_info(server_folder_in2, 'sll')
+        compare_file_info(df1, df2, server_compare_out)
     else:
         print("Invalid option selected.")
 
 
 if __name__ == '__main__':
     main()
-
-
-#     # differences = compare_excel_dbinfo_files(file_excel1, file_excel2, file_excel_out)
-#     # df1 = get_folder_files_info(server_folder_in1, 'sll')
-#     # df2 = get_folder_files_info(server_folder_in2, 'sll')
-#     # compare_file_info(df1, df2, server_compare_out)
-    #
-
 
