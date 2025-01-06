@@ -70,7 +70,7 @@ load_dotenv(env_path)
 connection_info = load_grouped_vars('DES_COR_V8_')
 
 # Get the directory where the output files will be saved
-output_dir_metadata = os.getenv('OUTPUT_DIR_METADATA')
+# output_dir_metadata = os.getenv('OUTPUT_DIR_METADATA')
 output_dir_data = os.getenv('OUTPUT_DIR_DATA')
 
 # Get the table to extract 
@@ -172,34 +172,39 @@ def main():
         # Ejecutar la opción seleccionada
         if option == 1:
             db_info_catalog = get_dbinfo_metadata(connection_info)
+            folder_name = f"{connection_info['service_name']}_catalog"
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], db_info_catalog, output_dir_metadata)
+                dump_dbinfo_to_excel(folder_name, db_info_catalog, output_dir_data)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], db_info_catalog, output_dir_metadata, sep=csv_separator)
+                dump_dbinfo_to_csv(folder_name, db_info_catalog, output_dir_data, sep=csv_separator)
         elif option == 2:
             db_info_table = get_dbinfo_table(connection_info, table_name, sql_filter=sql_filter, sql_query=sql_query, max_records_per_table=max_records_per_table)
+            folder_name = f"{connection_info['service_name']}_{table_name.lower()}"
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], db_info_table, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table, file_name=table_name)
+                dump_dbinfo_to_excel(folder_name, db_info_table, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table, file_name=table_name)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], db_info_table, output_dir_data, sep=csv_separator, suffix=None)
+                dump_dbinfo_to_csv(folder_name, db_info_table, output_dir_data, sep=csv_separator, suffix=None)
         elif option == 3:
             db_info_all_tables = get_dbinfo_all_tables(connection_info, tables_to_exclude, total_records_limit=total_records_limit, max_records_per_table=max_records_per_table)
+            folder_name = f"{connection_info['service_name']}_all_tables"
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], db_info_all_tables, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
+                dump_dbinfo_to_excel(folder_name, db_info_all_tables, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], db_info_all_tables, output_dir_data, sep=csv_separator) 
+                dump_dbinfo_to_csv(folder_name, db_info_all_tables, output_dir_data, sep=csv_separator) 
         elif option == 4:
             tables_with_clob = get_dbinfo_tables_with_clob(connection_info, tables_with_clob_to_exclude)
+            folder_name = f"{connection_info['service_name']}_clobs"
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
+                dump_dbinfo_to_excel(folder_name, tables_with_clob, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], tables_with_clob, output_dir_data, sep=csv_separator)    
+                dump_dbinfo_to_csv(folder_name, tables_with_clob, output_dir_data, sep=csv_separator)    
         elif option == 5:
             info_tables = get_dbinfo_list_of_tables(table_list, connection_info)
+            folder_name = f"{connection_info['service_name']}_list_tables"
             if output_format == 'excel':
-                dump_dbinfo_to_excel(connection_info['service_name'], info_tables, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
+                dump_dbinfo_to_excel(folder_name, info_tables, output_dir_data, include_record_count=True, max_records_per_table=max_records_per_table)
             else:
-                dump_dbinfo_to_csv(connection_info['service_name'], info_tables, output_dir_data, sep=csv_separator) 
+                dump_dbinfo_to_csv(folder_name, info_tables, output_dir_data, sep=csv_separator) 
     elif option == 6:
         generate_excel_from_diffs(folder_in1, folder_in2, folder_out)
     elif option == 7:

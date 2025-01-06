@@ -246,6 +246,7 @@ def dump_dbinfo_to_excel(folder_name:str, table_dataframes: dict, output_dir: st
         table_name = item_data['name']
         dataframe = item_data['data']
         fields = item_data['fields']
+        # print(f'fields: {fields}')
         column_names = list(fields.keys())
         data_types = [value['data_type'] for value in fields.values()]
         index_list = item_data['index']

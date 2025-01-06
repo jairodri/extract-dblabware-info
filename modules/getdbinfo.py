@@ -169,6 +169,22 @@ def extract_query_info(sql_query):
     return table_name, fields_list
 
 
+def print_column_types(table_dict):
+    """
+    Prints the data types of the columns for each table in the table_dict dictionary.
+
+    Parameters:
+    -----------
+    table_dict : dict
+        Dictionary containing table names as keys and another dictionary with metadata and data as values.
+    """
+    for table_name, table_info in table_dict.items():
+        if "data" in table_info and not table_info["data"].empty:
+            print(f"Table: {table_name}")
+            print(table_info["data"].dtypes)
+            print("\n")
+
+
 def get_dbinfo_metadata(connection_info: dict):
     """
     Retrieves detailed metadata and data for various Oracle catalog tables, such as tables, views, indexes, 
@@ -548,7 +564,8 @@ def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = N
         except SQLAlchemyError as e:
             print(f"Error retrieving {table_name}: {e}")
             table_dict[table_name]["data"] = pd.DataFrame()
-
+    
+    # print_column_types(table_dict)
     return table_dict
 
 
@@ -652,7 +669,7 @@ def get_dbinfo_all_tables(connection_info: dict, tables_to_exclude: list, total_
 
         except SQLAlchemyError as e:
             print(f"Error retrieving tables: {e}")
-
+        print(f'Total records retrieved: {total_records_retrieved}')
         # Una vez que se alcanza el límite, eliminar las tablas sin datos del diccionario
         if total_records_retrieved >= total_records_limit:
             for table_name in list(all_tables.keys()):
