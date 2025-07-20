@@ -11,7 +11,8 @@ from modules.utils import adjust_column_widths, format_header_cell
 
 def compare_text_files(file1, file2, output_file):
     """
-    Compares two text files using difflib and saves the differences to an output file only if there are differences.
+    Compares two text files using difflib and saves the differences to an output file 
+    only if there are differences, ignoring differences in spaces or indentations.
 
     Parameters:
     -----------
@@ -27,31 +28,34 @@ def compare_text_files(file1, file2, output_file):
     int
         The number of lines with differences.
     """
-    # Read the content of the files
+    def normalize_line(line):
+        """Normalize a line by stripping and collapsing spaces."""
+        # Strip leading and trailing spaces
+        line = line.strip()
+        # Replace multiple spaces with a single space
+        line = re.sub(r'\s+', ' ', line)
+        return line
+
+    # Read and normalize the content of the files
     with open(file1, 'r') as f1:
-        text1 = f1.readlines()
+        text1 = [normalize_line(line) for line in f1.readlines()]
     
     with open(file2, 'r') as f2:
-        text2 = f2.readlines()
+        text2 = [normalize_line(line) for line in f2.readlines()]
     
     # Use difflib to generate the differences
-    diff = list(difflib.unified_diff(text1, text2, fromfile=file1, tofile=file2, n=0))
-    
+    diff = list(difflib.unified_diff(text1, text2, fromfile=file1, tofile=file2, lineterm=''))
+
     # Filter out lines that start with '---', '+++' or '@@'
     filtered_diff = [line for line in diff if not (line.startswith('---') or line.startswith('+++') or line.startswith('@@'))]
 
-    # Add a newline character to the end of each element in filtered_diff if it doesn't already have one, except for the last element
-    for i in range(len(filtered_diff) - 1):  # Exclude the last element
-        if not filtered_diff[i].endswith('\n'):
-            filtered_diff[i] += '\n'
-            
     # Count the number of lines with differences
     diff_lines = len(filtered_diff)
 
     # Only save the differences if there are any
     if diff_lines > 0:
         with open(output_file, 'w') as output:
-            output.writelines(filtered_diff)
+            output.writelines(f"{line}\n" for line in filtered_diff)
     
     return diff_lines
 

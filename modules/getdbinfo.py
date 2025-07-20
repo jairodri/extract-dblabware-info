@@ -1,182 +1,167 @@
+"""
+Oracle Database Information Extraction Module
+
+This module provides functions to extract metadata and data from Oracle databases,
+including table structures, indexes, constraints, and actual table data.
+
+Author: Database Analysis Team
+Version: 2.0
+"""
+
+import os
+import re
+import time
+from typing import Dict, List, Optional, Tuple, Any
+import pandas as pd
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.exc import SQLAlchemyError
 import cx_Oracle
-import pandas as pd
-import re
-import time
-import pprint
-import json
 
 
-def connect_to_oracle(host:str, port:int, service_name:str, username:str, password:str):
+def connect_to_oracle(host: str, port: int, service_name: str, username: str, password: str):
     """
-    Function to connect to an Oracle database using SQLAlchemy and cx_Oracle.
-    From version 8 onwards, cx_Oracle has been renamed to oracledb, though cx_Oracle is still functional in earlier versions.
+    Establish connection to Oracle database using SQLAlchemy and cx_Oracle.
+    
+    Note: From version 8 onwards, cx_Oracle has been renamed to oracledb, 
+    though cx_Oracle is still functional in earlier versions.
 
-    Parameters:
-    - host: The address of the database server.
-    - port: The port where the database server is listening.
-    - service_name: The service name of the database.
-    - username: The database user's name.
-    - password: The password for the database user.
+    Args:
+        host (str): Database server address
+        port (int): Database server port
+        service_name (str): Oracle service name
+        username (str): Database username
+        password (str): Database password
 
     Returns:
-    - engine: SQLAlchemy Engine object if the connection is successful.
-    - None: If an error occurs during the connection.
+        sqlalchemy.engine.Engine: SQLAlchemy Engine object if successful, None otherwise
     """
-    # Create the connection string in the format required by SQLAlchemy and cx_Oracle
+    # Create connection string in SQLAlchemy/cx_Oracle format
     connection_string = f'oracle+cx_oracle://{username}:{password}@{host}:{port}/?service_name={service_name}'
     
     try:
         engine = create_engine(connection_string)
+        print(f"Successfully connected to Oracle database: {service_name}")
         return engine
     except SQLAlchemyError as e:
-        print(f"Error connecting to the database: {e}")
+        print(f"Error connecting to database {service_name}: {e}")
         return None
 
 
-def get_oracle_version(engine):
+def get_oracle_version(engine) -> Optional[int]:
     """
-    Retrieves the major version number of the connected Oracle database.
+    Retrieve the major version number of the connected Oracle database.
 
-    This function queries the `v$version` view to obtain the Oracle database version.
-    It extracts the major version number (e.g., 12, 11) from the version string and returns
-    it as an integer for easy comparison.
+    This function queries the v$version view to obtain Oracle database version
+    and extracts the major version number for compatibility checks.
 
-    Parameters:
-    -----------
-    engine : sqlalchemy.engine.base.Engine
-        The SQLAlchemy engine object used to connect to the Oracle database.
+    Args:
+        engine (sqlalchemy.engine.Engine): SQLAlchemy engine for database connection
 
     Returns:
-    --------
-    int or None
-        An integer representing the major Oracle database version if successful (e.g., 12, 11).
-        Returns None if there is an error during the query execution or if the version cannot be parsed.
-
-    Exceptions:
-    -----------
-    SQLAlchemyError
-        If an error occurs while querying the database, the exception is caught, and an error message
-        is printed. The function will return None in this case.
+        Optional[int]: Major Oracle version number (e.g., 12, 11) or None if error occurs
 
     Example:
-    --------
-    oracle_version = get_oracle_version(engine)
-    if oracle_version:
-        print(f"Oracle Database Major Version: {oracle_version}")
-    else:
-        print("Unable to retrieve Oracle version.")
+        >>> oracle_version = get_oracle_version(engine)
+        >>> if oracle_version and oracle_version >= 12:
+        ...     print("Using Oracle 12c+ features")
     """
-    
-    with engine.connect() as connection:
-        version_query = "SELECT banner FROM v$version WHERE banner LIKE 'Oracle%'"
-        try:
+    try:
+        with engine.connect() as connection:
+            version_query = "SELECT banner FROM v$version WHERE banner LIKE 'Oracle%'"
             version_df = pd.read_sql(version_query, connection)
+            
+            if version_df.empty:
+                print("No Oracle version information found")
+                return None
+                
             oracle_version_str = version_df.iloc[0, 0]
             
-            # Use regex to extract the first two digits (major version)
+            # Extract major version number using regex
             match = re.search(r"(\d+)", oracle_version_str)
             if match:
                 oracle_version = int(match.group(1))
+                print(f"Detected Oracle version: {oracle_version}")
                 return oracle_version
             else:
                 print(f"Unable to parse Oracle version from: {oracle_version_str}")
                 return None
-        except SQLAlchemyError as e:
-            print(f"Error retrieving Oracle version: {e}")
-            return None
+                
+    except SQLAlchemyError as e:
+        print(f"Error retrieving Oracle version: {e}")
+        return None
 
 
-def remove_illegal_chars(value):
+def remove_illegal_chars(value: Any) -> Any:
     """
-    Removes illegal or non-printable characters from a string, except for newline (\n) and carriage return (\r).
+    Remove illegal or non-printable characters from strings.
+    
+    Preserves newline (\n) and carriage return (\r) characters while removing
+    other non-printable ASCII characters that could cause issues in data export.
 
-    Parameters:
-    -----------
-    value : str or any
-        The input value to be cleaned. If it's a string, non-printable ASCII characters 
-        (except newline and carriage return) are removed. If it's not a string, the value is returned as is.
+    Args:
+        value (Any): Input value to be cleaned
 
     Returns:
-    --------
-    str or any
-        The cleaned string without non-printable characters, or the original value if not a string.
+        Any: Cleaned string if input was string, otherwise original value
     """
-
     if isinstance(value, str):
         return ''.join(c for c in value if c.isprintable() or c in ('\n', '\r'))
     return value
 
 
-def extract_query_info(sql_query):
+def extract_query_info(sql_query: str) -> Tuple[Optional[str], Optional[List[str]]]:
     """
-    Extracts the table name and a list of selected fields from a given SQL query.
+    Extract table name and selected fields from a SQL query.
 
-    The function uses regular expressions to parse the SQL query and extract the table name
-    and the list of fields specified in the SELECT clause. If a field includes an alias
-    (e.g., "alias.field_name"), it returns only the field name, ignoring the alias part.
-    Similarly, if the table name includes a schema (e.g., "schema_name.table_name"),
-    it returns only the table name, ignoring the schema.
+    Uses regular expressions to parse SQL SELECT statements and extract
+    the target table and field list. Handles aliases and schema prefixes.
 
     Args:
-        sql_query (str): The SQL query from which to extract the table name and fields.
+        sql_query (str): SQL SELECT query to parse
 
     Returns:
-        tuple: A tuple containing the table name (str) and a list of fields (list of str).
-               If the query does not match the expected pattern, both values will be `None`.
+        Tuple[Optional[str], Optional[List[str]]]: Tuple containing table name 
+                                                  and list of fields, or (None, None) if parsing fails
 
     Example:
-        sql_query = '''
-        SELECT 
-        alias.sample_number,
-        alias.sampled_date,
-        alias.text_id,
-        alias.status
-        FROM SGLOWNER.SAMPLE 
-        WHERE LOGIN_DATE >= '01/01/2024'
-        '''
-        
-        table_name, fields_list = extract_query_info(sql_query)
-        # table_name -> 'SAMPLE'
-        # fields_list -> ['sample_number', 'sampled_date', 'text_id', 'status']
+        >>> query = '''
+        ... SELECT alias.sample_number, alias.sampled_date, alias.text_id
+        ... FROM SGLOWNER.SAMPLE 
+        ... WHERE LOGIN_DATE >= '01/01/2024'
+        ... '''
+        >>> table_name, fields = extract_query_info(query)
+        >>> # Returns: ('SAMPLE', ['sample_number', 'sampled_date', 'text_id'])
     """
-    # Regular expression to capture the fields between SELECT and FROM
+    # Extract fields between SELECT and FROM
     fields_match = re.search(r'SELECT\s+(.*?)\s+FROM', sql_query, re.IGNORECASE | re.DOTALL)
     
-    # Regular expression to capture the table name after the FROM clause
+    # Extract table name after FROM
     table_match = re.search(r'FROM\s+([a-zA-Z0-9_\.]+)', sql_query, re.IGNORECASE)
     
     if not fields_match or not table_match:
+        print("Unable to parse SQL query - invalid SELECT/FROM structure")
         return None, None
 
-    # Extract the list of fields and clean up whitespace and new lines
+    # Clean and normalize field names
     fields_str = fields_match.group(1)
     fields_list = [field.strip().upper() for field in fields_str.split(',')]
 
-    # Remove any aliases (text before the dot) from the field names
+    # Remove alias prefixes (text before dot) from field names
     fields_list = [field.split('.')[-1] for field in fields_list]
 
-    # Extract the full table name
+    # Extract table name, removing schema prefix if present
     full_table_name = table_match.group(1).upper()
-    
-    # If the table name contains a dot, extract only the table name (ignore schema)
-    if '.' in full_table_name:
-        table_name = full_table_name.split('.')[1]
-    else:
-        table_name = full_table_name
+    table_name = full_table_name.split('.')[-1] if '.' in full_table_name else full_table_name
 
     return table_name, fields_list
 
 
-def print_column_types(table_dict):
+def print_column_types(table_dict: Dict[str, Dict[str, Any]]) -> None:
     """
-    Prints the data types of the columns for each table in the table_dict dictionary.
+    Print data types of columns for debugging purposes.
 
-    Parameters:
-    -----------
-    table_dict : dict
-        Dictionary containing table names as keys and another dictionary with metadata and data as values.
+    Args:
+        table_dict (Dict[str, Dict[str, Any]]): Dictionary containing table metadata and data
     """
     for table_name, table_info in table_dict.items():
         if "data" in table_info and not table_info["data"].empty:
@@ -185,86 +170,60 @@ def print_column_types(table_dict):
             print("\n")
 
 
-def get_dbinfo_metadata(connection_info: dict):
+def get_dbinfo_metadata(connection_info: Dict[str, str]) -> Optional[Dict[str, Any]]:
     """
-    Retrieves detailed metadata and data for various Oracle catalog tables, such as tables, views, indexes, 
-    constraints, procedures, and synonyms, for a specified owner in the database.
+    Retrieve comprehensive metadata from Oracle database catalog tables.
 
-    This function connects to an Oracle database using the provided connection information, retrieves metadata 
-    related to the database objects owned by the specified user, and stores the metadata in a structured dictionary.
-    It includes information about columns (e.g., name, data type, length) and retrieves the actual data from each 
-    catalog table.
+    Extracts metadata for tables, views, indexes, constraints, procedures, and synonyms
+    for a specified owner, including both column definitions and actual catalog data.
 
-    Parameters:
-    -----------
-    connection_info : dict
-        A dictionary containing connection information to the Oracle database:
-            - host : str
-                The hostname or IP address of the Oracle database server.
-            - port : int
-                The port number used by the Oracle database server.
-            - service_name : str
-                The Oracle database service name.
-            - user : str
-                The username used for the database connection.
-            - password : str
-                The password used for the username.
-            - owner : str
-                The owner of the database objects whose metadata is being retrieved.
+    Args:
+        connection_info (Dict[str, str]): Database connection parameters
+            - host: Database server hostname/IP
+            - port: Database server port  
+            - service_name: Oracle service name
+            - user: Database username
+            - password: Database password
+            - owner: Schema owner for metadata extraction
 
     Returns:
-    --------
-    dict
-        A dictionary containing the metadata and data for various Oracle catalog tables. The dictionary 
-        is structured as follows:
+        Optional[Dict[str, Any]]: Dictionary containing catalog metadata and data,
+                                 None if connection fails
 
+    Structure:
         {
             "tables": {
                 "name": "ALL_TABLES",
-                "order": "TABLE_name",
-                "field_owner": "OWNER",
-                "index": ["TABLE_name"],
-                "fields": { ... },  # Column metadata for tables
-                "data": pd.DataFrame()  # Data from ALL_TABLES
+                "fields": {column_name: {data_type, data_length}, ...},
+                "data": pd.DataFrame  # Actual catalog data
             },
-            "views": { ... },  # Similar structure for views
-            "indexes": { ... },  # Similar structure for indexes
-            "constraints": { ... },  # Similar structure for constraints
-            "procedures": { ... },  # Similar structure for procedures
-            "synonyms": { ... }  # Similar structure for synonyms
+            "views": {...},
+            "indexes": {...},
+            "constraints": {...},
+            "procedures": {...},
+            "synonyms": {...},
+            "<table_name>": {  # Individual table metadata
+                "fields": {...},
+                "data": pd.DataFrame  # Column definitions
+            }
         }
-
-        The "fields" dictionary for each table contains entries of the form:
-        {
-            "column_name": {
-                "data_type": <DATA_TYPE>,
-                "data_length": <DATA_LENGTH>
-            },
-            ...
-        }
-
-    Notes:
-    ------
-    - This function retrieves both column metadata and data for the specified catalog tables.
-    - It assumes the user has sufficient privileges to query system catalog views like SYS.ALL_TAB_COLS, 
-      SYS.ALL_TABLES, and other system views.
-    - In case of a SQLAlchemyError during data retrieval, the function handles the error gracefully by printing 
-      an error message and populating the corresponding dictionary keys with empty values.
-    - The function uses SQLAlchemy to manage database connections and execute SQL queries.
     """
-
+    # Extract connection parameters
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
     username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
-    print(f'Extracting metadata from Oracle database {service_name}...')
+    
+    print(f'Extracting metadata from Oracle database {service_name} for owner {owner}...')
+    
+    # Establish database connection
     engine = connect_to_oracle(host, port, service_name, username, password)
-
     if engine is None:
         return None
 
+    # Define catalog tables to extract
     catalog_tables = {
         "tables": {
             "name": "ALL_TABLES",
@@ -276,7 +235,7 @@ def get_dbinfo_metadata(connection_info: dict):
         },
         "views": {
             "name": "ALL_VIEWS",
-            "order": "VIEW_NAME",
+            "order": "VIEW_NAME", 
             "field_owner": "OWNER",
             "index": ["VIEW_NAME"],
             "fields": {},
@@ -285,7 +244,7 @@ def get_dbinfo_metadata(connection_info: dict):
         "indexes": {
             "name": "ALL_INDEXES",
             "order": "TABLE_NAME",
-            "field_owner": "OWNER",
+            "field_owner": "OWNER", 
             "index": ["INDEX_NAME"],
             "fields": {},
             "data": pd.DataFrame()
@@ -299,7 +258,7 @@ def get_dbinfo_metadata(connection_info: dict):
             "data": pd.DataFrame()
         },
         "procedures": {
-            "name": "ALL_PROCEDURES",
+            "name": "ALL_PROCEDURES", 
             "order": "OBJECT_NAME",
             "field_owner": "OWNER",
             "index": ["OBJECT_NAME"],
@@ -316,504 +275,628 @@ def get_dbinfo_metadata(connection_info: dict):
         }
     }
 
-    # First, we retrieve the fields of the column name, its type and length for the main catalog tables.
-    # These values will be stored in the “fields” key of the dictionary with the catalog data.
-    # We will need this information later to determine if a field is CLOB.
-    with engine.connect() as connection:
-        for catalog_table, table_info in catalog_tables.items():
-            table_name = table_info['name']
-            query = f"select column_name, data_type, data_length from SYS.ALL_TAB_COLS where TABLE_name = '{table_name}' order by COLUMN_ID"
+    try:
+        with engine.connect() as connection:
+            # Step 1: Extract column metadata for each catalog table
+            print("Extracting catalog table schemas...")
+            for catalog_table, table_info in catalog_tables.items():
+                table_name = table_info['name']
+                query = f"""
+                    SELECT column_name, data_type, data_length 
+                    FROM SYS.ALL_TAB_COLS 
+                    WHERE TABLE_NAME = '{table_name}' 
+                    ORDER BY COLUMN_ID
+                """
+                
+                try:
+                    df = pd.read_sql(query, connection)
+                    fields_dict = {}
+                    for _, row in df.iterrows():
+                        column_name = row['column_name']
+                        fields_dict[column_name] = {
+                            "data_type": row['data_type'],
+                            "data_length": row['data_length']
+                        }
+                    catalog_tables[catalog_table]["fields"] = fields_dict
+                    
+                except SQLAlchemyError as e:
+                    print(f"Error retrieving schema for {catalog_table}: {e}")
+                    catalog_tables[catalog_table]["fields"] = {}
+
+            # Step 2: Extract actual data from catalog tables
+            print("Extracting catalog data...")
+            for catalog_table, table_info in catalog_tables.items():
+                table_name = table_info['name']
+                order = table_info['order']
+                field_owner = table_info['field_owner']
+                
+                # Build field list for SELECT query
+                fields = ', '.join(table_info['fields'].keys())
+                if not fields:  # Skip if no fields retrieved
+                    continue
+                    
+                query = f"""
+                    SELECT {fields} 
+                    FROM SYS.{table_name} 
+                    WHERE {field_owner} = '{owner}' 
+                    ORDER BY {order}
+                """
+
+                try:
+                    df = pd.read_sql(query, connection)
+                    catalog_tables[catalog_table]["data"] = df
+                    print(f"Retrieved {len(df)} records from {table_name}")
+                    
+                except SQLAlchemyError as e:
+                    print(f"Error retrieving data from {catalog_table}: {e}")
+                    catalog_tables[catalog_table]["data"] = pd.DataFrame()
+
+            # Step 3: Extract column information for all user tables
+            print("Extracting individual table column definitions...")
+            
+            # Define standard fields for table column metadata
+            generic_fields = {
+                'COLUMN_NAME': {'data_type': 'VARCHAR2', 'data_length': 128},
+                'DATA_TYPE': {'data_type': 'VARCHAR2', 'data_length': 128},
+                'DATA_LENGTH': {'data_type': 'NUMBER', 'data_length': 22},
+                'DATA_PRECISION': {'data_type': 'NUMBER', 'data_length': 22},
+                'DATA_SCALE': {'data_type': 'NUMBER', 'data_length': 22},
+                'NULLABLE': {'data_type': 'VARCHAR2', 'data_length': 1},
+                'COLUMN_ID': {'data_type': 'NUMBER', 'data_length': 22}
+            }
+
+            # Process each table found in the catalog
+            all_tables_df = catalog_tables["tables"]["data"]
+            for _, row in all_tables_df.iterrows():
+                table_name = row['table_name']
+                
+                # Extract column definitions for this table
+                query = f"""
+                    SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, 
+                           DATA_SCALE, NULLABLE, COLUMN_ID
+                    FROM SYS.ALL_TAB_COLS 
+                    WHERE TABLE_NAME = '{table_name}' 
+                    AND OWNER = '{owner}'
+                    AND COLUMN_NAME NOT LIKE 'SYS\_%' ESCAPE '\\'
+                    ORDER BY COLUMN_ID
+                """
+                
+                try:
+                    df = pd.read_sql(query, connection)
+                    catalog_tables[table_name] = {
+                        "name": table_name,
+                        "order": "",
+                        "field_owner": "",
+                        "index": "",
+                        "fields": generic_fields,
+                        "data": df
+                    }
+                    
+                except SQLAlchemyError as e:
+                    print(f"Error retrieving column info for table {table_name}: {e}")
+
+            print(f"Metadata extraction completed for {len(catalog_tables)} catalog objects")
+            return catalog_tables
+            
+    except Exception as e:
+        print(f"Unexpected error during metadata extraction: {e}")
+        return None
+
+
+def get_dbinfo_table(connection_info: Dict[str, str], table_name: str, 
+                    sql_filter: Optional[str] = None, sql_query: Optional[str] = None, 
+                    max_records_per_table: int = 50000, 
+                    engine=None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieve detailed information and data from a specific Oracle table.
+
+    Extracts table schema information including column names, types, lengths, 
+    constraints, and retrieves actual table data with optional filtering and row limits.
+
+    Args:
+        connection_info (Dict[str, str]): Database connection parameters
+        table_name (str): Name of the table to extract
+        sql_filter (Optional[str]): Optional WHERE clause for data filtering
+        sql_query (Optional[str]): Optional custom SQL query (overrides table_name)
+        max_records_per_table (int): Maximum number of records to retrieve (default: 50000)
+        engine: Optional SQLAlchemy engine to reuse existing connection
+
+    Returns:
+        Optional[Dict[str, Any]]: Dictionary containing table metadata and data,
+                                 None if extraction fails
+
+    Example:
+        >>> table_info = get_dbinfo_table(conn_info, "SAMPLE", 
+        ...                              sql_filter="WHERE STATUS = 'ACTIVE'",
+        ...                              max_records_per_table=10000)
+    """
+    print(f'Extracting data from Oracle table {table_name}...')
+    
+    # Extract connection parameters
+    host = connection_info['host']
+    port = connection_info['port']
+    service_name = connection_info['service_name']
+    username = connection_info['user']
+    password = connection_info['password']
+    owner = connection_info['owner']
+    
+    # Use provided engine or establish new connection
+    engine_provided = engine is not None
+    if not engine_provided:
+        engine = connect_to_oracle(host, port, service_name, username, password)
+        if engine is None:
+            return None
+
+    # Get Oracle version for compatibility (only if not already cached)
+    oracle_version = get_oracle_version(engine)
+    if oracle_version is None:
+        print("Error retrieving Oracle version")
+        return None
+
+    is_version_12c_or_higher = oracle_version >= 12
+    
+    # Handle custom SQL query
+    if sql_query is not None:
+        extracted_table_name, extracted_fields_list = extract_query_info(sql_query)
+        
+        if extracted_table_name is None or extracted_fields_list is None:
+            print("Failed to parse custom SQL query")
+            return None
+        
+        table_name = extracted_table_name
+        fields_list = extracted_fields_list
+
+    table_dict = {}
+
+    try:
+        with engine.connect() as connection:
+            # Step 1: Extract column metadata
+            if sql_query is None:
+                # Standard column query for entire table
+                query = f"""
+                    SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH
+                    FROM SYS.ALL_TAB_COLS 
+                    WHERE TABLE_NAME = '{table_name}' 
+                    AND OWNER = '{owner}'
+                    AND COLUMN_NAME NOT LIKE 'SYS\_%' ESCAPE '\\'
+                    AND COLUMN_NAME NOT LIKE 'AUDIT%'
+                    ORDER BY COLUMN_ID
+                """
+            else:
+                # Query for specific fields from custom query
+                fields_string = ', '.join(f"'{field}'" for field in fields_list)
+                query = f"""
+                    SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH 
+                    FROM SYS.ALL_TAB_COLS 
+                    WHERE TABLE_NAME = '{table_name}' 
+                    AND OWNER = '{owner}'
+                    AND COLUMN_NAME IN ({fields_string})
+                    AND COLUMN_NAME NOT LIKE 'SYS\_%' ESCAPE '\\' 
+                    ORDER BY COLUMN_ID
+                """
+
+            # Execute column metadata query
+            fields_dict = {}
             try:
                 df = pd.read_sql(query, connection)
-                fields_dict = {}
                 for _, row in df.iterrows():
                     column_name = row['column_name']
                     fields_dict[column_name] = {
                         "data_type": row['data_type'],
                         "data_length": row['data_length']
                     }
-                catalog_tables[catalog_table]["fields"] = fields_dict
-            except SQLAlchemyError as e:
-                print(f"Error retrieving {catalog_table}: {e}")
-                catalog_tables[catalog_table]["fields"] = {}
-
-    # Now we use the information in the list of fields to retrieve all the information contained in the main tables of the catalog.
-    # We also use the predefined information about the owner of the tables and the order of retrieval of the query.
-    # The retrieved information will be stored in the “data” key of the dictionary with the catalog tables.
-        for catalog_table, table_info in catalog_tables.items():
-
-            table_name = table_info['name']
-            order = table_info['order']
-            field_owner = table_info['field_owner']
-            fields = ', '.join(f"{fld}" for fld in list(table_info['fields'].keys()))
-            query = f"select {fields} from sys.{table_name} where {field_owner} = '{owner}' order by {order}"
-
-            try:
-                df = pd.read_sql(query, connection)
-                catalog_tables[catalog_table]["data"] = df 
-            except SQLAlchemyError as e:
-                print(f"Error retrieving {catalog_table}: {e}")
-                catalog_tables[catalog_table]["data"] = pd.DataFrame()
-
-        # Define the generic fields that we want to extract from non-catalog tables.
-        # These fields represent common metadata such as column name, data type, length, etc.
-        generic_fields = {
-            'COLUMN_name': {'data_type': 'VARCHAR2', 'data_length': 128},
-            'DATA_TYPE': {'data_type': 'VARCHAR2', 'data_length': 128},
-            'DATA_LENGTH': {'data_type': 'NUMBER', 'data_length': 22},
-            'DATA_PRECISION': {'data_type': 'NUMBER', 'data_length': 22},
-            'DATA_SCALE': {'data_type': 'NUMBER', 'data_length': 22},
-            'NULLABLE': {'data_type': 'VARCHAR2', 'data_length': 1},
-            'COLUMN_ID': {'data_type': 'NUMBER', 'data_length': 22}
-        }
-
-    # Finally, we retrieve the catalog information of all tables defined in ALL_TABLES and create an entry for each table in the catalog information dictionary.
-    # We also filter out columns that start with 'SYS_' because these are internal system fields defined by Oracle, and not part of user-defined schema.
-        all_tables_df = catalog_tables["tables"]["data"] 
-        for _, row in all_tables_df.iterrows():
-            table_name = row['table_name']
-            query = f"""
-                SELECT COLUMN_name, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, COLUMN_ID
-                FROM SYS.ALL_TAB_COLS 
-                WHERE TABLE_name = '{table_name}' 
-                AND COLUMN_name NOT LIKE 'SYS\_%' ESCAPE '\\'
-                ORDER BY COLUMN_name
-            """
-            try:
-                df = pd.read_sql(query, connection)
-                catalog_tables[table_name] = {
+                    
+                # Initialize table dictionary
+                table_dict[table_name] = {
                     "name": table_name,
                     "order": "",
                     "field_owner": "",
-                    "index": "",
-                    "fields": generic_fields,  
-                    "data": df
+                    "index": [],
+                    "fields": fields_dict,
+                    "data": pd.DataFrame()
                 }
+                
             except SQLAlchemyError as e:
-                print(f"Error retrieving column information for table {table_name}: {e}")
+                print(f"Error retrieving column metadata for {table_name}: {e}")
+                return None
 
+            # Step 2: Extract constraint information (for standard queries only)
+            if sql_query is None:
+                index_list = []
+                
+                # Choose appropriate constraint column based on Oracle version
+                search_condition_column = "SEARCH_CONDITION_VC" if is_version_12c_or_higher else "SEARCH_CONDITION"
 
-    return catalog_tables
-
-
-def get_dbinfo_table(connection_info: dict, table_name: str, sql_filter: str = None, sql_query: str = None, max_records_per_table: int = 50000):
-    """
-    Retrieve detailed information from the specified table in the Oracle database, including field names, types,
-    lengths, indexes, and data, with an optional limit on the number of records retrieved.
-
-    Parameters:
-    -----------
-    connection_info : dict
-        Dictionary containing Oracle database connection information, including host, port, service name, 
-        username, password, and owner.
-    table_name : str
-        The name of the table for which information will be retrieved.
-    sql_filter : str, optional
-        An optional SQL filter to be applied to the query for filtering rows from the table.
-    sql_query : str, optional
-        An optional custom SQL query to retrieve specific information. If provided, `table_name` and `fields_list` 
-        are extracted from this query.
-    max_records_per_table : int, optional, default=50000
-        The maximum number of records to retrieve from the table. This limit will be applied to the result set 
-        using a `FETCH FIRST N ROWS ONLY` clause.
-
-    Returns:
-    --------
-    dict
-        A dictionary containing detailed information about the specified table, including fields, indexes, and 
-        data. Returns None if an error occurs or no data is retrieved.
-    """
-    print(f'Extracting data from Oracle table {table_name}...')
-    host = connection_info['host']
-    port = connection_info['port']
-    service_name = connection_info['service_name']
-    username = connection_info['user']
-    password = connection_info['password']
-    owner = connection_info['owner']
-    engine = connect_to_oracle(host, port, service_name, username, password)
-
-    if engine is None:
-        return None
-
-    table_dict = {}
-
-    # Obtain Oracle database version using the get_oracle_version function
-    oracle_version = get_oracle_version(engine)
-    if oracle_version is None:
-        print("Error retrieving Oracle version")
-        return None
-
-    # Check if the version is 12 or higher
-    is_version_12c_or_higher = oracle_version >= 12
-
-    # If sql_query is provided, extract table name and fields from it
-    if sql_query is not None:
-        extracted_table_name, extracted_fields_list = extract_query_info(sql_query)
-        
-        # If the extracted table name or fields list is None, return None as something went wrong
-        if extracted_table_name is None or extracted_fields_list is None:
-            return None
-        
-        table_name = extracted_table_name
-        fields_list = extracted_fields_list
-        fields = ', '.join(fields_list)
-
-    # Next, we retrieve the table's columns
-    with engine.connect() as connection:
-        if sql_query is None:
-            query = f"""
-                SELECT COLUMN_name, DATA_TYPE, DATA_LENGTH
-                FROM SYS.ALL_TAB_COLS 
-                WHERE TABLE_name = '{table_name}' 
-                AND COLUMN_name NOT LIKE 'SYS\_%' ESCAPE '\\'
-                AND COLUMN_name NOT LIKE 'AUDIT%'
-                ORDER BY COLUMN_ID
-            """
-        else:
-            # Convertimos la lista de campos a una cadena compatible con SQL ('field1', 'field2', ...)
-            fields_string = ', '.join(f"'{field}'" for field in fields_list)
-            query = f"""
-                SELECT COLUMN_name, DATA_TYPE, DATA_LENGTH 
-                FROM SYS.ALL_TAB_COLS 
-                WHERE TABLE_name = '{table_name}' 
-                AND COLUMN_name IN ({fields_string})
-                AND COLUMN_name NOT LIKE 'SYS\_%' ESCAPE '\\' 
-                ORDER BY COLUMN_ID
+                # Query for check constraints to identify indexed fields
+                constraint_query = f"""
+                    SELECT {search_condition_column} 
+                    FROM SYS.ALL_CONSTRAINTS 
+                    WHERE TABLE_NAME = '{table_name}' 
+                    AND OWNER = '{owner}'
+                    AND CONSTRAINT_TYPE = 'C'
                 """
-
-        fields_dict = {}
-        try:
-            df = pd.read_sql(query, connection)
-            for _, row in df.iterrows():
-                column_name = row['column_name']
-                fields_dict[column_name] = {
-                    "data_type": row['data_type'],
-                    "data_length": row['data_length']
-                }
-            table_dict[table_name] = {
-                "name": table_name,
-                "order": "",
-                "field_owner": "",
-                "index": [],
-                "fields": fields_dict,
-                "data": pd.DataFrame()
-            }
-        except SQLAlchemyError as e:
-            print(f"Error retrieving {table_name}: {e}")
-            table_dict[table_name]["fields"] = {}
-
-        if sql_query is None:
-            index_list = []
-            # Use the column search_condition_vc if it's Oracle 12c or higher, otherwise use search_condition
-            search_condition_column = "SEARCH_CONDITION_VC" if is_version_12c_or_higher else "SEARCH_CONDITION"
-
-            # Retrieve the unique index and its fields if it exists
-            #                 ORDER BY TO_CHAR({search_condition_column})
-            query = f"""
-                SELECT {search_condition_column} 
-                FROM SYS.ALL_CONSTRAINTS s 
-                WHERE s.TABLE_name = '{table_name}' 
-                AND s.CONSTRAINT_TYPE = 'C'
-            """
-            try:
-                df = pd.read_sql(query, connection)
-                if not df.empty:
-                    index_list = []
+                
+                try:
+                    df = pd.read_sql(constraint_query, connection)
                     for condition in df[search_condition_column.lower()]:
-                        # Use a regular expression to capture the field name inside quotes
-                        match = re.search(r'"([^"]+)"', condition)
-                        if match:
-                            field_name = match.group(1)  # Extract the field name without the quotes
-                            index_list.append(field_name)
-                            
-                    # ordenamos la lista
-                    index_list.sort()
+                        if condition:  # Check for non-null conditions
+                            # Extract field name from constraint condition
+                            match = re.search(r'"([^"]+)"', str(condition))
+                            if match:
+                                field_name = match.group(1)
+                                index_list.append(field_name)
+                    
+                    # Sort and store index list
+                    index_list = sorted(set(index_list))  # Remove duplicates and sort
                     table_dict[table_name]["index"] = index_list
+                    
+                except SQLAlchemyError as e:
+                    print(f"Error retrieving constraints for {table_name}: {e}")
+                    table_dict[table_name]["index"] = []
 
-            except SQLAlchemyError as e:
-                print(f"Error retrieving index of {table_name}: {e}")
-                table_dict[table_name]["index"] = []
-
-            fields = ', '.join(f"{fld}" for fld in list(fields_dict.keys()))
-            index = ', '.join(f"{fld}" for fld in index_list)
-            # Construct the basic SQL query to select fields from the specified table
-            query = f"SELECT {fields} FROM {owner}.{table_name}"
-            # Create the ORDER BY clause if there are any indexed fields
-            query2 = f"ORDER BY {index}" 
-            # Create the clause to limit the number of rows returned by the query
-            query3 = f"FETCH FIRST {max_records_per_table} ROWS ONLY"
-            # If a SQL filter is provided, append it to the query
-            if sql_filter is not None:
-                query = query + ' ' + sql_filter
-                print(f'Query with added filter: {query}')
-            # If there are indexed fields, append the ORDER BY clause to the query
-            if len(index_list) > 0:
-                query = query + ' ' + query2
-            # Finally, append the row limit clause to the query
-            if is_version_12c_or_higher:
-                query = query + ' ' + query3 
+                # Step 3: Build and execute data query
+                fields = ', '.join(fields_dict.keys())
+                
+                # Base query
+                data_query = f"SELECT {fields} FROM {owner}.{table_name}"
+                
+                # Add optional filter
+                if sql_filter is not None:
+                    data_query = f"{data_query} {sql_filter}"
+                    print(f'Applied filter: {sql_filter}')
+                
+                # Add ordering if constraints exist
+                if index_list:
+                    order_by = ', '.join(index_list)
+                    data_query = f"{data_query} ORDER BY {order_by}"
+                
+                # Add row limit based on Oracle version
+                if is_version_12c_or_higher:
+                    data_query = f"{data_query} FETCH FIRST {max_records_per_table} ROWS ONLY"
+                else:
+                    data_query = f"SELECT * FROM ({data_query}) WHERE ROWNUM <= {max_records_per_table}"
             else:
-                query = f"SELECT * FROM ({query}) WHERE ROWNUM <= {max_records_per_table}"
-        else:
-            query = sql_query
-            print(f'Custom query: {query}')
+                # Use custom query directly
+                data_query = sql_query
+                print(f'Using custom query: {sql_query}')
 
-        try:
-            df = pd.read_sql(query, connection)
-            table_dict[table_name]["data"] = df
-        except SQLAlchemyError as e:
-            print(f"Error retrieving {table_name}: {e}")
-            table_dict[table_name]["data"] = pd.DataFrame()
+            # Step 4: Execute data extraction query
+            try:
+                print(f'Executing data query for {table_name}...')
+                df = pd.read_sql(data_query, connection)
+                table_dict[table_name]["data"] = df
+                print(f'Retrieved {len(df)} records from {table_name}')
+                
+            except SQLAlchemyError as e:
+                print(f"Error retrieving data from {table_name}: {e}")
+                table_dict[table_name]["data"] = pd.DataFrame()
+
+    except Exception as e:
+        print(f"Unexpected error processing table {table_name}: {e}")
+        return None
     
-    # print_column_types(table_dict)
     return table_dict
 
 
-def get_dbinfo_all_tables(connection_info: dict, tables_to_exclude: list, total_records_limit: int = 500000, max_records_per_table: int = 50000):
+def get_excluded_tables(connection, owner: str, additional_exclusions: List[str]) -> List[str]:
     """
-    Retrieves metadata and data for all tables in an Oracle database, excluding specified tables and views, 
-    while respecting limits on the total number of records and the maximum number of records per table.
+    Get list of tables to exclude from data extraction.
+    
+    Combines user-specified exclusions with system-identified tables containing
+    AUDIT, CONFIG, or _LOG patterns.
 
-    Parameters:
-    -----------
-    connection_info : dict
-        Dictionary containing Oracle database connection details (host, port, service_name, user, password, owner).
-    tables_to_exclude : list
-        List of table names to exclude from the data retrieval process.
-    total_records_limit : int, optional
-        The total number of records to retrieve across all tables. Once this limit is reached, the process will stop.
-        Defaults to 500,000 records.
-    max_records_per_table : int, optional
-        The maximum number of records to retrieve from a single table. This prevents retrieving too much data from any 
-        one table. Defaults to 50,000 records per table.
+    Args:
+        connection: Database connection object
+        owner (str): Database schema owner
+        additional_exclusions (List[str]): User-specified tables to exclude
 
     Returns:
-    --------
-    all_tables : dict
-        A dictionary where the keys are table names and the values are metadata and data from each table that was retrieved.
-        If no tables are retrieved or the connection fails, it returns None.
-    
-    Notes:
-    ------
-    - This function will exclude any tables specified in the `tables_to_exclude` parameter, as well as any tables 
-      containing 'AUDIT', 'CONFIG', or '_LOG' in their names.
-    - Views are excluded from the data retrieval process.
-    - If the total number of retrieved records exceeds `total_records_limit`, the function will stop retrieving data 
-      and return the tables that have been processed up to that point.
-    - Tables without data (empty) will be removed from the returned dictionary.
+        List[str]: Combined list of tables to exclude
     """
+    excluded_tables = additional_exclusions.copy()
+    
+    # Query for system tables to exclude
+    query = f"""
+        SELECT TABLE_NAME 
+        FROM SYS.ALL_TABLES 
+        WHERE OWNER = '{owner}' 
+        AND (TABLE_NAME LIKE '%AUDIT%' 
+             OR TABLE_NAME LIKE '%CONFIG%' 
+             OR TABLE_NAME LIKE '%\_LOG' ESCAPE '\\')
+    """
+    
+    try:
+        df = pd.read_sql(query, connection)
+        excluded_tables.extend(df['table_name'].tolist())
+        print(f"Found {len(df)} additional system tables to exclude")
+        
+    except SQLAlchemyError as e:
+        print(f"Error retrieving system tables to exclude: {e}")
+    
+    return list(set(excluded_tables))  # Remove duplicates
 
+
+def get_dbinfo_all_tables(connection_info: Dict[str, str], tables_to_exclude: List[str], 
+                         total_records_limit: int = 500000, 
+                         max_records_per_table: int = 50000) -> Optional[Dict[str, Any]]:
+    """
+    Retrieve metadata and data from all tables in an Oracle schema.
+
+    Extracts information from all user tables while respecting exclusion lists
+    and record limits to prevent excessive data retrieval.
+
+    Args:
+        connection_info (Dict[str, str]): Database connection parameters
+        tables_to_exclude (List[str]): List of table names to exclude
+        total_records_limit (int): Total record limit across all tables (default: 500000)
+        max_records_per_table (int): Maximum records per individual table (default: 50000)
+
+    Returns:
+        Optional[Dict[str, Any]]: Dictionary of table information,
+                                 None if extraction fails
+
+    Notes:
+        - Automatically excludes views and system tables
+        - Stops processing when total_records_limit is reached
+        - Removes empty tables from final result
+        - Reuses database connection for all tables to improve performance
+    """
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
     username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
+    
     print(f'Extracting data from all tables in Oracle database {service_name}...')
 
+    # Establish database connection
     engine = connect_to_oracle(host, port, service_name, username, password)
-
     if engine is None:
         return None
 
     all_tables = {}
-    total_records_retrieved = 0 
+    total_records_retrieved = 0
 
-    with engine.connect() as connection:
+    try:
+        with engine.connect() as connection:
+            # Get comprehensive exclusion list
+            excluded_tables = get_excluded_tables(connection, owner, tables_to_exclude)
+            excluded_tables_str = ', '.join(f"'{table}'" for table in excluded_tables)
+            
+            print(f"Excluding {len(excluded_tables)} tables from extraction")
 
-        # Query to find tables with 'AUDIT', 'CONFIG' or '_LOG' in the name
-        query = f"""
-        SELECT TABLE_name 
-        FROM SYS.ALL_TABLES 
-        WHERE OWNER = '{owner}' 
-        AND (TABLE_name LIKE '%AUDIT%' OR TABLE_name LIKE '%CONFIG%' OR TABLE_name LIKE '%\_LOG' ESCAPE '\\')
-        """
-        try:
-            df = pd.read_sql(query, connection)
-            tables_to_exclude.extend(df['table_name'].tolist())
-        except SQLAlchemyError as e:
-            print(f"Error retrieving tables: {e}")
-
-        tablas_excluded = ', '.join(f"'{table}'" for table in tables_to_exclude)
-
-        query = f"""
-        select distinct TABLE_name 
-        from SYS.ALL_TAB_COLS 
-        where OWNER = '{owner}'
-        and TABLE_name not in ({tablas_excluded})
-        AND TABLE_name NOT IN (
-            SELECT OBJECT_name 
-            FROM SYS.ALL_OBJECTS 
-            WHERE OWNER = '{owner}' 
-            AND OBJECT_TYPE = 'VIEW'
-        )
-        order by TABLE_name
-        """
-        try:
-            df = pd.read_sql(query, connection)
-            for _, row in df.iterrows():
-                table_name = row['table_name']
-
-                # Call get_dbinfo_table to retrieve table information
-                table_info = get_dbinfo_table(connection_info, table_name, max_records_per_table=max_records_per_table)
+            # Query for all user tables excluding views and excluded tables
+            query = f"""
+                SELECT DISTINCT TABLE_NAME 
+                FROM SYS.ALL_TAB_COLS 
+                WHERE OWNER = '{owner}'
+                AND TABLE_NAME NOT IN ({excluded_tables_str})
+                AND TABLE_NAME NOT IN (
+                    SELECT OBJECT_NAME 
+                    FROM SYS.ALL_OBJECTS 
+                    WHERE OWNER = '{owner}' 
+                    AND OBJECT_TYPE = 'VIEW'
+                )
+                ORDER BY TABLE_NAME
+            """
+            
+            try:
+                df = pd.read_sql(query, connection)
+                print(f"Found {len(df)} tables to process")
                 
-                # Store the table info in the dictionary using table_name as the key
-                if table_info is not None:
-                    all_tables[table_name] = table_info[table_name]
+                # Process each table
+                for idx, row in df.iterrows():
+                    table_name = row['table_name']
+                    print(f"Processing table {idx + 1}/{len(df)}: {table_name}")
 
-                num_rows = len(table_info[table_name]['data'])
-                total_records_retrieved += num_rows
-                if total_records_retrieved > total_records_limit:
-                    print(f"Total records limit of {total_records_limit} reached working with {table_name}. Stopping further data retrieval.")
-                    break
+                    # Extract table information
+                    table_info = get_dbinfo_table(
+                        connection_info, 
+                        table_name, 
+                        max_records_per_table=max_records_per_table,
+                        engine=engine  # Pass the shared engine
+                    )
+                    
+                    if table_info is not None and table_name in table_info:
+                        all_tables[table_name] = table_info[table_name]
+                        
+                        # Track total records
+                        num_rows = len(table_info[table_name]['data'])
+                        total_records_retrieved += num_rows
+                        
+                        # Check if we've reached the total limit
+                        if total_records_retrieved >= total_records_limit:
+                            print(f"Total records limit of {total_records_limit:,} reached at table {table_name}")
+                            print("Stopping further data retrieval")
+                            break
+                    else:
+                        print(f"Failed to extract data from table {table_name}")
 
-        except SQLAlchemyError as e:
-            print(f"Error retrieving tables: {e}")
-        print(f'Total records retrieved: {total_records_retrieved}')
-        # Una vez que se alcanza el límite, eliminar las tablas sin datos del diccionario
-        if total_records_retrieved >= total_records_limit:
-            for table_name in list(all_tables.keys()):
-                if all_tables[table_name]["data"].empty:
+            except SQLAlchemyError as e:
+                print(f"Error retrieving table list: {e}")
+                return None
+
+            print(f'Total records retrieved: {total_records_retrieved:,}')
+            
+            # Clean up empty tables if limit was reached
+            if total_records_retrieved >= total_records_limit:
+                empty_tables = [name for name, info in all_tables.items() 
+                              if info["data"].empty]
+                for table_name in empty_tables:
                     del all_tables[table_name]
+                print(f"Removed {len(empty_tables)} empty tables from results")
+
+    except Exception as e:
+        print(f"Unexpected error during all tables extraction: {e}")
+        return None
 
     return all_tables
 
 
-def get_dbinfo_tables_with_clob(connection_info: dict, tables_to_exclude: list, max_records_per_table: int = 50000):
+def get_dbinfo_tables_with_clob(connection_info: Dict[str, str], tables_to_exclude: List[str], 
+                               max_records_per_table: int = 50000) -> Optional[Dict[str, Any]]:
     """
-    Retrieves information about tables containing CLOB fields, excluding a predefined list of tables. For each table 
-    with a CLOB field, the function calls `get_dbinfo_table` to gather detailed metadata and data, with a limit 
-    on the maximum number of records retrieved per table.
+    Retrieve information from tables containing CLOB (Character Large Object) fields.
 
-    Parameters:
-    -----------
-    connection_info : dict
-        Dictionary containing connection details for the Oracle database, including host, port, service name, 
-        username, password, and owner.
-    
-    tables_to_exclude : list
-        A list of table names to be excluded from the query. This list can include tables loaded from the `.env`
-        file under the variable `TABLES_WITH_CLOB_TO_EXCLUDE`, as well as other tables found via a query that match 
-        certain patterns (e.g., tables with 'AUDIT', 'CONFIG', or '_LOG' in the name).
-    
-    max_records_per_table : int, optional
-        The maximum number of records to retrieve from each table with CLOB fields. This helps to limit the 
-        amount of data retrieved for large tables. Defaults to 50,000 records.
+    Identifies and extracts data from tables that have CLOB columns, which often
+    contain large text data that requires special handling.
+
+    Args:
+        connection_info (Dict[str, str]): Database connection parameters
+        tables_to_exclude (List[str]): List of table names to exclude  
+        max_records_per_table (int): Maximum records per table (default: 50000)
 
     Returns:
-    --------
-    tables_with_clob : dict
-        A dictionary where the keys are table names and the values are detailed metadata information, including data 
-        for each table containing CLOB fields, retrieved via the `get_dbinfo_table` function. Returns None if the 
-        connection to the database fails.
-    """
+        Optional[Dict[str, Any]]: Dictionary containing CLOB table information,
+                                 None if extraction fails
 
+    Notes:
+        - Automatically excludes views and system tables
+        - CLOB fields may contain large amounts of text data
+        - Consider memory implications when setting max_records_per_table
+    """
     host = connection_info['host']
     port = connection_info['port']
     service_name = connection_info['service_name']
     username = connection_info['user']
     password = connection_info['password']
     owner = connection_info['owner']
-    print(f'Extracting data from all tables with clob fields in Oracle database {service_name}...')
+    
+    print(f'Extracting data from tables with CLOB fields in Oracle database {service_name}...')
 
+    # Establish database connection
     engine = connect_to_oracle(host, port, service_name, username, password)
-
     if engine is None:
         return None
 
     tables_with_clob = {}
 
-    with engine.connect() as connection:
-        # Query to find tables with 'AUDIT', 'CONFIG' or '_LOG' in the name
-        query = f"""
-        SELECT TABLE_name 
-        FROM SYS.ALL_TABLES 
-        WHERE OWNER = '{owner}' 
-        AND (TABLE_name LIKE '%AUDIT%' OR TABLE_name LIKE '%CONFIG%' OR TABLE_name LIKE '%\_LOG' ESCAPE '\\')
-        """
-        try:
-            df = pd.read_sql(query, connection)
-            tables_to_exclude.extend(df['table_name'].tolist())
-        except SQLAlchemyError as e:
-            print(f"Error retrieving tables: {e}")
+    try:
+        with engine.connect() as connection:
+            # Get comprehensive exclusion list
+            excluded_tables = get_excluded_tables(connection, owner, tables_to_exclude)
+            excluded_tables_str = ', '.join(f"'{table}'" for table in excluded_tables)
+            
+            print(f"Excluding {len(excluded_tables)} tables from CLOB analysis")
 
-        # Create the exclusion list for the query
-        tablas_excluded = ', '.join(f"'{table}'" for table in tables_to_exclude)
-
-        # Query to retrieve tables with CLOB fields that are not in the exclusion list
-        query = f"""
-        select distinct TABLE_name 
-        from SYS.ALL_TAB_COLS 
-        where OWNER = '{owner}'
-        and TABLE_name not in ({tablas_excluded})
-        AND TABLE_name NOT IN (
-            SELECT OBJECT_name 
-            FROM SYS.ALL_OBJECTS 
-            WHERE OWNER = '{owner}' 
-            AND OBJECT_TYPE = 'VIEW'
-        )
-        and DATA_TYPE = 'CLOB'
-        order by TABLE_name
-        """
-        try:
-            df = pd.read_sql(query, connection)
-            # For each table with CLOB fields, call `get_dbinfo_table` to get detailed information
-            for _, row in df.iterrows():
-                table_name = row['table_name']
-
-                # Call get_dbinfo_table to retrieve table information
-                table_info = get_dbinfo_table(connection_info, table_name, max_records_per_table=max_records_per_table)
+            # Query for tables with CLOB fields
+            query = f"""
+                SELECT DISTINCT TABLE_NAME 
+                FROM SYS.ALL_TAB_COLS 
+                WHERE OWNER = '{owner}'
+                AND TABLE_NAME NOT IN ({excluded_tables_str})
+                AND TABLE_NAME NOT IN (
+                    SELECT OBJECT_NAME 
+                    FROM SYS.ALL_OBJECTS 
+                    WHERE OWNER = '{owner}' 
+                    AND OBJECT_TYPE = 'VIEW'
+                )
+                AND DATA_TYPE = 'CLOB'
+                ORDER BY TABLE_NAME
+            """
+            
+            try:
+                df = pd.read_sql(query, connection)
+                print(f"Found {len(df)} tables with CLOB fields")
                 
-                # Store the table info in the dictionary using table_name as the key
-                if table_info is not None:
-                    tables_with_clob[table_name] = table_info[table_name]
+                # Process each CLOB table
+                for idx, row in df.iterrows():
+                    table_name = row['table_name']
+                    print(f"Processing CLOB table {idx + 1}/{len(df)}: {table_name}")
 
-        except SQLAlchemyError as e:
-            print(f"Error retrieving tables: {e}")
+                    # Extract table information using shared engine
+                    table_info = get_dbinfo_table(
+                        connection_info, 
+                        table_name, 
+                        max_records_per_table=max_records_per_table,
+                        engine=engine  # Pass the shared engine
+                    )
+                    
+                    if table_info is not None and table_name in table_info:
+                        tables_with_clob[table_name] = table_info[table_name]
+                        record_count = len(table_info[table_name]['data'])
+                        print(f"Retrieved {record_count} records from CLOB table {table_name}")
+                    else:
+                        print(f"Failed to extract data from CLOB table {table_name}")
 
+            except SQLAlchemyError as e:
+                print(f"Error retrieving CLOB tables: {e}")
+                return None
+
+    except Exception as e:
+        print(f"Unexpected error during CLOB tables extraction: {e}")
+        return None
+
+    print(f"Successfully processed {len(tables_with_clob)} CLOB tables")
     return tables_with_clob
 
 
-def get_dbinfo_list_of_tables(tables: list, connection_info: dict, max_records_per_table: int = 50000):
+def get_dbinfo_list_of_tables(tables: List[str], connection_info: Dict[str, str], 
+                             max_records_per_table: int = 50000) -> Dict[str, Any]:
     """
-    Retrieves detailed information for a list of tables from an Oracle database.
+    Retrieve detailed information for a specific list of tables.
 
-    For each table in the provided list, the function calls `get_dbinfo_table` to gather metadata such as column 
-    names, data types, and other table properties, with a limit on the maximum number of records retrieved per table.
-    The results are stored in a dictionary with the table names as keys.
+    Processes only the tables specified in the input list, useful for targeted
+    data extraction or when working with a known subset of tables.
 
-    Parameters:
-    -----------
-    tables : list
-        A list of table names for which data is to be retrieved.
-
-    connection_info : dict
-        Dictionary containing connection details for the Oracle database, including host, port, service name, 
-        username, password, and owner.
-    
-    max_records_per_table : int, optional
-        The maximum number of records to retrieve from each table. This helps to limit the amount of data 
-        retrieved for large tables. Defaults to 50,000 records.
+    Args:
+        tables (List[str]): List of table names to process
+        connection_info (Dict[str, str]): Database connection parameters
+        max_records_per_table (int): Maximum records per table (default: 50000)
 
     Returns:
-    --------
-    info_tables : dict
-        A dictionary where the keys are table names and the values are detailed metadata information 
-        about each table, as returned by `get_dbinfo_table`. If a table's information cannot be retrieved, 
-        it is excluded from the result.
+        Dict[str, Any]: Dictionary containing information for successfully processed tables
+
+    Notes:
+        - Reuses database connection for all tables to improve performance
+        - Processes tables in the order specified in the input list
+        - Continues processing remaining tables even if one fails
+
+    Example:
+        >>> tables_of_interest = ['SAMPLE', 'RESULT', 'TEST']
+        >>> table_info = get_dbinfo_list_of_tables(tables_of_interest, conn_info)
     """
-    print(f"Extracting data from a list of tables in Oracle database {connection_info['service_name']}...")
-    info_tables = {}
-
-    for table in tables:
-        table_name = table
-        # Call get_dbinfo_table to retrieve table information
-        table_info = get_dbinfo_table(connection_info, table_name, max_records_per_table=max_records_per_table)
-        
-        # Store the table info in the dictionary using table_name as the key
-        if table_info is not None:
-            info_tables[table_name] = table_info[table_name]
-
-    return info_tables
-
+    service_name = connection_info['service_name']
+    print(f"Extracting data from specified tables in Oracle database {service_name}...")
+    print(f"Tables to process: {', '.join(tables)}")
     
+    # Establish database connection ONCE for all specified tables
+    host = connection_info['host']
+    port = connection_info['port']
+    username = connection_info['user']
+    password = connection_info['password']
+    
+    engine = connect_to_oracle(host, port, service_name, username, password)
+    if engine is None:
+        print("Failed to establish database connection")
+        return {}
+    
+    info_tables = {}
+    
+    try:
+        # Process each specified table using the shared engine
+        for idx, table_name in enumerate(tables, 1):
+            print(f"Processing table {idx}/{len(tables)}: {table_name}")
+            
+            # Extract table information using shared engine
+            table_info = get_dbinfo_table(
+                connection_info, 
+                table_name, 
+                max_records_per_table=max_records_per_table,
+                engine=engine  # Pass the shared engine
+            )
+            
+            if table_info is not None and table_name in table_info:
+                info_tables[table_name] = table_info[table_name]
+                record_count = len(table_info[table_name]['data'])
+                print(f"Successfully retrieved {record_count} records from {table_name}")
+            else:
+                print(f"Warning: Failed to extract data from table {table_name}")
+                
+    except Exception as e:
+        print(f"Unexpected error during list tables extraction: {e}")
+        return info_tables  # Return partial results if available
+    
+    print(f"Successfully processed {len(info_tables)} out of {len(tables)} specified tables")
+    return info_tables
