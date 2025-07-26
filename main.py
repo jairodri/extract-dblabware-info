@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
+import traceback
 
 # Import custom modules
 from modules.getdbinfo import (
@@ -31,6 +32,8 @@ from modules.comparefiles import (
     compare_file_info
 )
 from modules.comparabd import collect_all_schemas, analyze_and_report_schemas
+from modules.compare_events import collect_all_events, analyze_and_report_events
+from modules.logparser import HTTPLogParser 
 
 
 def load_grouped_vars_by_pattern() -> Dict[str, Dict[str, str]]:
@@ -125,6 +128,11 @@ def initialize_environment() -> Dict[str, any]:
         'max_records_per_table': int(os.getenv('MAX_RECORDS_PER_TABLE', 1000)),
         'total_records_limit': int(os.getenv('TOTAL_RECORDS_LIMIT', 300000)),
         'csv_separator': os.getenv('CSV_SEPARATOR', '|'),
+        'events_comparison_report_file': os.getenv('EVENTS_COMPARISON_REPORT_FILE'),
+
+        # Log parser configuration
+        'log_parser_input_file': os.getenv('LOG_PARSER_INPUT_FILE'),
+        'log_parser_output_file': os.getenv('LOG_PARSER_OUTPUT_FILE'),
         
         # Parse comma-separated lists
         'tables_with_clob_to_exclude': [
@@ -182,6 +190,8 @@ def display_main_menu() -> None:
     print("7 - Compare excel files and generate excel with differences")
     print("8 - Compare files in folders and generate excel with differences")
     print("9 - Compare database schemas and generate comprehensive report")
+    print("10 - Compare events between databases and generate comprehensive report") 
+    print("11 - Parse HTTP status codes from web service logs") 
     print("0 - Exit")
     print("="*60)
 
@@ -198,13 +208,79 @@ def get_user_option() -> int:
     """
     try:
         option = int(input("\nEnter the option number: "))
-        if option < 0 or option > 9:
-            raise ValueError("Option must be between 0 and 9")
+        if option < 0 or option > 11:
+            raise ValueError("Option must be between 0 and 11")
         return option
     except ValueError as e:
         print(f"Invalid option: {e}")
         return -1
 
+def execute_log_parsing(config: Dict[str, any]) -> None:
+    """
+    Execute HTTP log parsing to extract status codes and generate CSV report.
+    
+    Args:
+        config (Dict[str, any]): Configuration settings including file paths
+    """
+    print("Starting HTTP log parsing...")
+    
+    # Get input log file path
+    default_input = config['log_parser_input_file']
+    log_file_path = input(f"\nEnter log file path (or press Enter for default: {default_input}): ").strip()
+    
+    if not log_file_path:
+        log_file_path = default_input
+    
+    # Check if file exists
+    if not os.path.exists(log_file_path):
+        print(f"Error: Log file not found: {log_file_path}")
+        return
+    
+    # Get output CSV file path (save in docs directory)
+    default_output = os.path.join(config['docs_output_dir'], config['log_parser_output_file'])
+    output_file_path = input(f"\nEnter output CSV file path (or press Enter for default: {default_output}): ").strip()
+    
+    if not output_file_path:
+        output_file_path = default_output
+    
+    try:
+        # Create parser instance
+        log_parser = HTTPLogParser(log_file_path)
+        
+        # Parse the log file
+        print(f"Parsing log file: {log_file_path}")
+        entries = log_parser.parse_log_file()
+        
+        if not entries:
+            print("No HTTP status entries found in the log file.")
+            return
+        
+        # Generate CSV report
+        print(f"Generating CSV report: {output_file_path}")
+        csv_path = log_parser.generate_csv_report(output_file_path)
+        
+        if csv_path:
+            print("HTTP log parsing completed successfully!")
+            print(f"CSV report saved to: {csv_path}")
+            
+            # Display summary
+            print("\n" + "="*50)
+            print("HTTP LOG PARSING SUMMARY:")
+            print(f"Input file: {log_file_path}")
+            print(f"Output file: {csv_path}")
+            print(f"Total entries processed: {len(entries)}")
+            
+            # Show status code summary
+            log_parser.print_summary()
+            print("="*50)
+        else:
+            print("Error: Failed to generate CSV report.")
+            
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"Error during log parsing: {e}")
+        traceback.print_exc()
 
 def select_database_connection(database_connections: Dict[str, Dict[str, str]]) -> Optional[Dict[str, str]]:
     """
@@ -526,7 +602,87 @@ def execute_schema_comparison(config: Dict[str, any]) -> None:
         
     except Exception as e:
         print(f"Error during schema comparison: {e}")
-        import traceback
+        traceback.print_exc()
+
+def execute_events_comparison(config: Dict[str, any]) -> None:
+    """
+    Execute comprehensive events comparison with configurable connection filtering.
+    
+    Args:
+        config (Dict[str, any]): Configuration settings including filter patterns
+    """
+    print("Starting comprehensive events comparison...")
+    
+    # Load available database connections
+    database_connections = load_grouped_vars_by_pattern()
+    
+    if not database_connections:
+        print("No database connections found.")
+        return
+    
+    print(f"Found {len(database_connections)} total database connections")
+    
+    # Apply configurable filters to database connections
+    filtered_connections = filter_database_connections(
+        database_connections,
+        include_patterns=config['schema_comparison_include_patterns'],
+        exclude_patterns=config['schema_comparison_exclude_patterns'],
+        regex_pattern=config['schema_comparison_regex_pattern']
+    )
+    
+    if not filtered_connections:
+        print("No database connections match the specified filter criteria.")
+        print("Filter configuration:")
+        if config['schema_comparison_include_patterns']:
+            print(f"  - Include patterns: {config['schema_comparison_include_patterns']}")
+        if config['schema_comparison_exclude_patterns']:
+            print(f"  - Exclude patterns: {config['schema_comparison_exclude_patterns']}")
+        if config['schema_comparison_regex_pattern']:
+            print(f"  - Regex pattern: {config['schema_comparison_regex_pattern']}")
+        print("\nAvailable connections:")
+        for name in database_connections.keys():
+            print(f"  - {name}")
+        return
+    
+    print(f"After filtering: {len(filtered_connections)} connections selected for comparison")
+    print("Selected database connections:")
+    for idx, conn_name in enumerate(filtered_connections.keys(), 1):
+        print(f"  {idx}. {conn_name}")
+
+    # Collect events from filtered databases
+    print("\nCollecting events information from selected databases...")
+    all_events = collect_all_events(filtered_connections, config['docs_output_dir'])
+
+    if len(all_events) < 2:
+        print("At least 2 schemas are needed for events comparison.")
+        print("Try adjusting your filter criteria to include more connections.")
+        return
+    
+    print(f"Successfully collected events from {len(all_events)} schemas.")
+    
+    # Generate comprehensive unified report using configured filename in docs directory
+    report_filename = config['events_comparison_report_file']
+    full_report_path = os.path.join(config['docs_output_dir'], report_filename)
+    
+    try:
+        events_data, differences = analyze_and_report_events(all_events, full_report_path)
+        print("Events comparison completed successfully.")
+        
+        # Display summary
+        print("\n" + "="*50)
+        print("EVENTS COMPARISON SUMMARY:")
+        if config['schema_comparison_include_patterns']:
+            print(f"Include patterns: {', '.join(config['schema_comparison_include_patterns'])}")
+        if config['schema_comparison_exclude_patterns']:
+            print(f"Exclude patterns: {', '.join(config['schema_comparison_exclude_patterns'])}")
+        if config['schema_comparison_regex_pattern']:
+            print(f"Regex pattern: {config['schema_comparison_regex_pattern']}")
+        print(f"Schemas analyzed: {len(all_events)}")
+        print(f"Report saved to: {full_report_path}")
+        print("="*50)
+        
+    except Exception as e:
+        print(f"Error during events comparison: {e}")
         traceback.print_exc()
 
 def main() -> None:
@@ -599,6 +755,14 @@ def main() -> None:
             elif option == 9:
                 execute_schema_comparison(config)
             
+            # Handle events comparison option (10)
+            elif option == 10:
+                execute_events_comparison(config)
+
+            # Handle log parsing option (11)
+            elif option == 11:
+                execute_log_parsing(config)
+
             # Pause before showing menu again
             input("\nPress Enter to continue...")
             
@@ -606,7 +770,6 @@ def main() -> None:
         print("\n\nProgram interrupted by user. Exiting...")
     except Exception as e:
         print(f"Unexpected error: {e}")
-        import traceback
         traceback.print_exc()
 
 

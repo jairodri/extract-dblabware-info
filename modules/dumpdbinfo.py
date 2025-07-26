@@ -8,12 +8,13 @@ Author: Database Analysis Team
 Version: 2.0
 """
 
+import logging
 import os
 import re
 import shutil
 from datetime import datetime, date
 from typing import Dict, List, Any, Optional
-
+import traceback
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -567,5 +568,167 @@ def generate_unified_schema_report(schema_repository: Dict[str, pd.DataFrame],
         
     except Exception as e:
         print(f"Error generating unified schema report '{output_filename}': {e}")
-        import traceback
         traceback.print_exc()
+
+# ==============================================================================
+# REPORT GENERATION
+# ==============================================================================
+
+def generate_events_comparison_report(all_events: Dict[str, Dict[str, pd.DataFrame]], 
+                                    diff_df: pd.DataFrame, output_filename: str) -> None:
+    """
+    Generate comprehensive Excel report for events comparison.
+    
+    Args:
+        all_events (Dict[str, Dict[str, pd.DataFrame]]): All events data
+        diff_df (pd.DataFrame): Differences DataFrame
+        output_filename (str): Output Excel file path
+    """
+    
+    print(f"Generating events comparison report: {output_filename}")
+    logging.info(f"Generating report: {output_filename}")
+    
+    try:
+        workbook = Workbook()
+        standard_font_size = 11
+        
+        # Create index sheet
+        index_sheet = workbook.active
+        index_sheet.title = "Events_Index"
+        
+        # Index headers
+        headers = ["Schema", "Events Count", "Test Events Count", "Database Events Count", "Total"]
+        for col_idx, header in enumerate(headers, 1):
+            cell = index_sheet.cell(row=1, column=col_idx, value=header)
+            format_header_cell(cell, font_size=standard_font_size)
+        
+        # Populate index with schema statistics
+        row_idx = 2
+        for schema_name, schema_data in all_events.items():
+            index_sheet.cell(row=row_idx, column=1, value=schema_name)
+            
+            events_count = len(schema_data.get('events', pd.DataFrame()))
+            test_events_count = len(schema_data.get('test_events', pd.DataFrame()))
+            db_events_count = len(schema_data.get('database_events', pd.DataFrame()))
+            total_count = events_count + test_events_count + db_events_count
+            
+            index_sheet.cell(row=row_idx, column=2, value=events_count)
+            index_sheet.cell(row=row_idx, column=3, value=test_events_count)
+            index_sheet.cell(row=row_idx, column=4, value=db_events_count)
+            index_sheet.cell(row=row_idx, column=5, value=total_count)
+            
+            row_idx += 1
+        
+        # Add differences section
+        diff_row = row_idx + 1
+        index_sheet.cell(row=diff_row, column=1, value="--- DIFFERENCES ANALYSIS ---")
+        format_header_cell(index_sheet.cell(row=diff_row, column=1))
+        
+        diff_row += 1
+        index_sheet.cell(row=diff_row, column=1, value="Events Differences")
+        index_sheet.cell(row=diff_row, column=2, value=len(diff_df))
+        index_sheet.cell(row=diff_row, column=3, value="differences found")
+        
+        # Format index sheet
+        adjust_column_widths(index_sheet)
+        
+        # Create individual schema sheets
+        for schema_name, schema_data in all_events.items():
+            for table_type, df in schema_data.items():
+                if df.empty:
+                    continue
+                    
+                sheet_name = f"{schema_name}_{table_type}"[:31]  # Excel sheet name limit
+                sheet = workbook.create_sheet(title=sheet_name)
+                
+                # Prepare DataFrame for Excel export by converting lists to strings
+                df_for_excel = prepare_dataframe_for_excel(df.copy())
+                
+                # Add data
+                for r_idx, row in enumerate(dataframe_to_rows(df_for_excel, index=False, header=True), 1):
+                    for c_idx, value in enumerate(row, 1):
+                        # Clean the value to ensure Excel compatibility
+                        cleaned_value = clean_value(value)
+                        
+                        cell = sheet.cell(row=r_idx, column=c_idx, value=cleaned_value)
+                        if r_idx == 1:  # Header
+                            format_header_cell(cell, font_size=standard_font_size)
+                
+                # Format sheet
+                adjust_column_widths(sheet)
+                sheet.auto_filter.ref = sheet.dimensions
+                sheet.freeze_panes = 'A2'
+        
+        # Create differences sheet
+        if not diff_df.empty:
+            diff_sheet = workbook.create_sheet(title="Events_Differences")
+            
+            # Prepare differences DataFrame for Excel
+            diff_df_for_excel = prepare_dataframe_for_excel(diff_df.copy())
+            
+            # Add differences data
+            for r_idx, row in enumerate(dataframe_to_rows(diff_df_for_excel, index=False, header=True), 1):
+                for c_idx, value in enumerate(row, 1):
+                    cleaned_value = clean_value(value)
+                    
+                    cell = diff_sheet.cell(row=r_idx, column=c_idx, value=cleaned_value)
+                    if r_idx == 1:  # Header
+                        format_header_cell(cell, font_size=standard_font_size)
+            
+            # Format sheet
+            adjust_column_widths(diff_sheet)
+            diff_sheet.auto_filter.ref = diff_sheet.dimensions
+            diff_sheet.freeze_panes = 'A2'
+        
+        # Save workbook
+        workbook.save(output_filename)
+        print(f"Events comparison report generated: {output_filename}")
+        logging.info(f"Report saved successfully: {output_filename}")
+        
+    except Exception as e:
+        print(f"Error generating events report: {e}")
+        logging.error(f"Error generating report: {e}")
+        traceback.print_exc()
+        raise
+
+
+def prepare_dataframe_for_excel(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare DataFrame for Excel export by converting problematic data types.
+    
+    Converts lists to comma-separated strings and handles other Excel-incompatible types.
+    
+    Args:
+        df (pd.DataFrame): Original DataFrame
+        
+    Returns:
+        pd.DataFrame: DataFrame ready for Excel export
+    """
+    df_copy = df.copy()
+    
+    for column in df_copy.columns:
+        # Convert lists to comma-separated strings
+        if df_copy[column].dtype == 'object':
+            df_copy[column] = df_copy[column].apply(convert_list_to_string)
+    
+    return df_copy
+
+
+def convert_list_to_string(value):
+    """
+    Convert list values to comma-separated strings for Excel compatibility.
+    
+    Args:
+        value: Value to convert
+        
+    Returns:
+        str: String representation of the value
+    """
+    if isinstance(value, list):
+        # Convert list to comma-separated string
+        return ', '.join(str(item) for item in value) if value else ''
+    elif pd.isna(value) or value is None:
+        return ''
+    else:
+        return str(value)
+
