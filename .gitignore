@@ -1,9 +1,23 @@
-# Byte-compiled / optimized / DLL files
+# Environment files with sensitive data
+.env
+resources/.env
+
+# Keep template files
+!.env.template
+!resources/.env.template
+
+# Output directories
+docs/
+output/
+downloads/
+data/
+*.log
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Distribution / packaging
+*.so
 .Python
 build/
 develop-eggs/
@@ -17,25 +31,35 @@ parts/
 sdist/
 var/
 wheels/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Environments
-.env
-.venv
+# Virtual environments
+.env/
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
 
-docs/
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Excel and CSV files
+*.xlsx
+*.xls
+*.csv
+
+# Log files
+*.log

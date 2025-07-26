@@ -111,6 +111,19 @@ def initialize_environment() -> Dict[str, any]:
 
     # Load environment variables from .env file
     env_path = Path(__file__).parent / "resources" / ".env"
+    
+    # Check if .env exists, if not provide helpful message
+    if not env_path.exists():
+        template_path = Path(__file__).parent / "resources" / ".env.template"
+        if template_path.exists():
+            print("❌ Configuration file not found!")
+            print(f"Please copy '{template_path}' to '{env_path}' and configure your settings.")
+            print("See README_SETUP.md for detailed instructions.")
+        else:
+            print("❌ Neither .env nor .env.template files found!")
+            print("Please check the resources/ directory.")
+        sys.exit(1)
+    
     load_dotenv(env_path)
 
     # Create docs directory if it doesn't exist
@@ -118,9 +131,16 @@ def initialize_environment() -> Dict[str, any]:
     docs_path = Path(__file__).parent / docs_dir
     docs_path.mkdir(exist_ok=True)
 
+    # Validate critical configuration
+    output_dir = os.getenv('OUTPUT_DIR_DATA')
+    if not output_dir:
+        print("❌ OUTPUT_DIR_DATA not configured in .env file!")
+        print("Please check your configuration.")
+        sys.exit(1)
+
     # Parse configuration values
     config = {
-        'output_dir_data': os.getenv('OUTPUT_DIR_DATA'),
+        'output_dir_data': output_dir,
         'docs_output_dir': str(docs_path),  # Full path to docs directory
         'table_name': os.getenv('TABLE_NAME'),
         'sql_query': os.getenv('SQL_QUERY') or None,
@@ -128,11 +148,11 @@ def initialize_environment() -> Dict[str, any]:
         'max_records_per_table': int(os.getenv('MAX_RECORDS_PER_TABLE', 1000)),
         'total_records_limit': int(os.getenv('TOTAL_RECORDS_LIMIT', 300000)),
         'csv_separator': os.getenv('CSV_SEPARATOR', '|'),
-        'events_comparison_report_file': os.getenv('EVENTS_COMPARISON_REPORT_FILE'),
-
+        'events_comparison_report_file': os.getenv('EVENTS_COMPARISON_REPORT_FILE', 'informe_completo_eventos_produccion.xlsx'),
+        
         # Log parser configuration
-        'log_parser_input_file': os.getenv('LOG_PARSER_INPUT_FILE'),
-        'log_parser_output_file': os.getenv('LOG_PARSER_OUTPUT_FILE'),
+        'log_parser_input_file': os.getenv('LOG_PARSER_INPUT_FILE', 'integration.log'),
+        'log_parser_output_file': os.getenv('LOG_PARSER_OUTPUT_FILE', 'http_status_report.csv'),
         
         # Parse comma-separated lists
         'tables_with_clob_to_exclude': [
@@ -160,7 +180,7 @@ def initialize_environment() -> Dict[str, any]:
         'file_excel_out': os.getenv('COMPARE_EXCEL_FILE_OUT'),
        
         # Schema comparison configuration
-        'schema_comparison_report_file': os.getenv('SCHEMA_COMPARISON_REPORT_FILE'),
+        'schema_comparison_report_file': os.getenv('SCHEMA_COMPARISON_REPORT_FILE', 'informe_completo_esquemas_produccion.xlsx'),
         'schema_comparison_include_patterns': [
             pattern.strip() for pattern in os.getenv('SCHEMA_COMPARISON_INCLUDE_PATTERNS', '').split(',')
             if pattern.strip()
